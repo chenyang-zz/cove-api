@@ -54,7 +54,8 @@ type Neo4jConfig struct {
 }
 
 type JWTConfig struct {
-	Secret string `yaml:"secret"`
+	Secret         string `yaml:"secret"`
+	AccessTokenTTL string `yaml:"access_token_ttl"`
 }
 
 type StorageConfig struct {
@@ -125,7 +126,7 @@ func defaultConfig() Config {
 		Redis:         RedisConfig{Addr: "localhost:6379"},
 		Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200"},
 		Neo4j:         Neo4jConfig{URI: "bolt://localhost:7687"},
-		JWT:           JWTConfig{Secret: "change-me"},
+		JWT:           JWTConfig{Secret: "change-me", AccessTokenTTL: "168h"},
 		SecretKey:     "0123456789abcdef0123456789abcdef",
 		Storage:       StorageConfig{Backend: "local", Dir: "./storage"},
 		LLM:           LLMConfig{Provider: "openai", BaseURL: "https://api.openai.com/v1"},
@@ -153,6 +154,7 @@ func applyEnv(cfg *Config) {
 	cfg.Neo4j.Password = env("NEO4J_PASSWORD", cfg.Neo4j.Password)
 	cfg.Neo4j.Database = env("NEO4J_DATABASE", cfg.Neo4j.Database)
 	cfg.JWT.Secret = env("JWT_SECRET", cfg.JWT.Secret)
+	cfg.JWT.AccessTokenTTL = env("JWT_ACCESS_TOKEN_TTL", cfg.JWT.AccessTokenTTL)
 	cfg.SecretKey = env("SECRET_KEY", cfg.SecretKey)
 	cfg.Storage.Backend = env("STORAGE_BACKEND", cfg.Storage.Backend)
 	cfg.Storage.Dir = env("STORAGE_DIR", cfg.Storage.Dir)

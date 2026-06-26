@@ -14,7 +14,7 @@ import (
 	"github.com/boxify/api-go/internal/core/llm"
 	"github.com/boxify/api-go/internal/core/memory"
 	"github.com/boxify/api-go/internal/core/prompt"
-	"github.com/boxify/api-go/internal/core/util"
+	"github.com/boxify/api-go/internal/util"
 	"github.com/boxify/api-go/internal/xerr"
 	"golang.org/x/sync/errgroup"
 )

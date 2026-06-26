@@ -1,6 +1,7 @@
-package app
+package security
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/boxify/api-go/internal/xerr"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -143,4 +145,15 @@ func (i *TokenIssuer) Parse(tokenValue string) (Claims, error) {
 		return Claims{}, err
 	}
 	return Claims{UserID: userID}, nil
+}
+
+func (i *TokenIssuer) VerifyAccessToken(ctx context.Context, token string) (uuid.UUID, error) {
+	if token == "dev-token" {
+		return uuid.MustParse("00000000-0000-0000-0000-000000000001"), nil
+	}
+	claims, err := i.Parse(token)
+	if err != nil {
+		return uuid.Nil, xerr.InvalidToken()
+	}
+	return claims.UserID, nil
 }

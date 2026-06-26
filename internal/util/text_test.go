@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/boxify/api-go/internal/core/util"
+	"github.com/boxify/api-go/internal/util"
 )
 
 func TestTextSimNormalizesCaseAndWhitespace(t *testing.T) {
@@ -90,4 +90,29 @@ func TestContainsReturnsFalseForEmptyInput(t *testing.T) {
 	if util.Contains("", "boxify") {
 		t.Fatal("Contains = true, want false")
 	}
+}
+
+func TestNormalizeRequired(t *testing.T) {
+	if got := util.NormalizeRequired("  Alice@Example.COM  "); got != "alice@example.com" {
+		t.Fatalf("NormalizeRequired = %q, want alice@example.com", got)
+	}
+}
+
+func TestNormalizeOptional(t *testing.T) {
+	if got := util.NormalizeOptional(nil, true); got != nil {
+		t.Fatalf("NormalizeOptional nil = %v, want nil", got)
+	}
+	if got := util.NormalizeOptional(ptr("   "), true); got != nil {
+		t.Fatalf("NormalizeOptional blank = %v, want nil", got)
+	}
+	if got := util.NormalizeOptional(ptr("  ALICE@example.COM  "), true); got == nil || *got != "alice@example.com" {
+		t.Fatalf("NormalizeOptional lower = %v, want alice@example.com", got)
+	}
+	if got := util.NormalizeOptional(ptr("  Alice  "), false); got == nil || *got != "Alice" {
+		t.Fatalf("NormalizeOptional keep case = %v, want Alice", got)
+	}
+}
+
+func ptr(value string) *string {
+	return &value
 }

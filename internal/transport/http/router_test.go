@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/boxify/api-go/internal/app"
-	"github.com/boxify/api-go/internal/repository"
+	"github.com/boxify/api-go/internal/domain"
+	"github.com/boxify/api-go/internal/infrastructure/security"
+	"github.com/boxify/api-go/internal/models"
+	"github.com/boxify/api-go/internal/svc"
 	httptransport "github.com/boxify/api-go/internal/transport/http"
 	"github.com/boxify/api-go/internal/xerr"
 	"github.com/google/uuid"
@@ -18,14 +20,19 @@ import (
 
 func newTestRouter(t *testing.T, enableDebugPanicRoute ...bool) http.Handler {
 	t.Helper()
-	cipher, err := app.NewSecretCipher("0123456789abcdef0123456789abcdef")
+	cipher, err := security.NewSecretCipher("0123456789abcdef0123456789abcdef")
 	if err != nil {
 		t.Fatalf("new cipher: %v", err)
 	}
+	svcCtx := &svc.ServiceContext{
+		UserRepo:         newTestUserRepository(),
+		RefreshTokenRepo: newTestRefreshTokenRepository(),
+		ModelConfigRepo:  &testModelConfigRepository{},
+		SecretCipher:     cipher,
+		TokenIssuer:      security.NewTokenIssuer("test-secret", time.Hour),
+	}
 	deps := httptransport.Dependencies{
-		AuthService:        app.NewAuthService(newTestUserRepository(), newTestRefreshTokenRepository(), "test-secret"),
-		ChatService:        app.NewChatService(),
-		ModelConfigService: app.NewModelConfigService(cipher),
+		Svc: svcCtx,
 	}
 	if len(enableDebugPanicRoute) > 0 {
 		deps.EnableDebugPanicRoute = enableDebugPanicRoute[0]
@@ -33,28 +40,47 @@ func newTestRouter(t *testing.T, enableDebugPanicRoute ...bool) http.Handler {
 	return httptransport.NewRouter(deps)
 }
 
+type testModelConfigRepository struct {
+	rows []*models.ModelConfig
+}
+
+func (r *testModelConfigRepository) Create(ctx context.Context, row *models.ModelConfig) (*models.ModelConfig, error) {
+	r.rows = append(r.rows, row)
+	return row, nil
+}
+
+func (r *testModelConfigRepository) List(ctx context.Context, userID uuid.UUID, modelType *domain.ModelType) ([]*models.ModelConfig, error) {
+	out := make([]*models.ModelConfig, 0, len(r.rows))
+	for _, row := range r.rows {
+		if row.UserID == userID && (modelType == nil || row.Type == string(*modelType)) {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
 type testUserRepository struct {
-	byID    map[uuid.UUID]repository.User
-	byLogin map[string]repository.User
+	byID    map[uuid.UUID]*models.User
+	byLogin map[string]*models.User
 }
 
 func newTestUserRepository() *testUserRepository {
 	return &testUserRepository{
-		byID:    map[uuid.UUID]repository.User{},
-		byLogin: map[string]repository.User{},
+		byID:    map[uuid.UUID]*models.User{},
+		byLogin: map[string]*models.User{},
 	}
 }
 
-func (r *testUserRepository) Create(ctx context.Context, user repository.User) (repository.User, error) {
+func (r *testUserRepository) Create(ctx context.Context, user *models.User) (*models.User, error) {
 	if user.ID == uuid.Nil {
 		user.ID = uuid.New()
 	}
 	if _, ok := r.byLogin[user.Username]; ok {
-		return repository.User{}, xerr.UserExists()
+		return nil, xerr.UserExists()
 	}
 	if user.Email != nil {
 		if _, ok := r.byLogin[*user.Email]; ok {
-			return repository.User{}, xerr.UserExists()
+			return nil, xerr.UserExists()
 		}
 	}
 	r.byID[user.ID] = user
@@ -65,31 +91,43 @@ func (r *testUserRepository) Create(ctx context.Context, user repository.User) (
 	return user, nil
 }
 
-func (r *testUserRepository) FindByLogin(ctx context.Context, login string) (repository.User, error) {
-	user, ok := r.byLogin[login]
-	if !ok {
-		return repository.User{}, xerr.NotFound("用户不存在")
+func (r *testUserRepository) Update(ctx context.Context, user *models.User) (*models.User, error) {
+	if _, ok := r.byID[user.ID]; !ok {
+		return nil, xerr.NotFound("用户不存在")
+	}
+	r.byID[user.ID] = user
+	r.byLogin[user.Username] = user
+	if user.Email != nil {
+		r.byLogin[*user.Email] = user
 	}
 	return user, nil
 }
 
-func (r *testUserRepository) FindByID(ctx context.Context, id uuid.UUID) (repository.User, error) {
+func (r *testUserRepository) FindByLogin(ctx context.Context, login string) (*models.User, error) {
+	user, ok := r.byLogin[login]
+	if !ok {
+		return nil, xerr.NotFound("用户不存在")
+	}
+	return user, nil
+}
+
+func (r *testUserRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	user, ok := r.byID[id]
 	if !ok {
-		return repository.User{}, xerr.NotFound("用户不存在")
+		return nil, xerr.NotFound("用户不存在")
 	}
 	return user, nil
 }
 
 type testRefreshTokenRepository struct {
-	byHash map[string]repository.RefreshToken
+	byHash map[string]*models.RefreshToken
 }
 
 func newTestRefreshTokenRepository() *testRefreshTokenRepository {
-	return &testRefreshTokenRepository{byHash: map[string]repository.RefreshToken{}}
+	return &testRefreshTokenRepository{byHash: map[string]*models.RefreshToken{}}
 }
 
-func (r *testRefreshTokenRepository) Create(ctx context.Context, token repository.RefreshToken) (repository.RefreshToken, error) {
+func (r *testRefreshTokenRepository) Create(ctx context.Context, token *models.RefreshToken) (*models.RefreshToken, error) {
 	if token.ID == uuid.Nil {
 		token.ID = uuid.New()
 	}
@@ -97,10 +135,10 @@ func (r *testRefreshTokenRepository) Create(ctx context.Context, token repositor
 	return token, nil
 }
 
-func (r *testRefreshTokenRepository) FindByHash(ctx context.Context, hash string) (repository.RefreshToken, error) {
+func (r *testRefreshTokenRepository) FindByHash(ctx context.Context, hash string) (*models.RefreshToken, error) {
 	token, ok := r.byHash[hash]
 	if !ok {
-		return repository.RefreshToken{}, xerr.InvalidToken()
+		return nil, xerr.InvalidToken()
 	}
 	return token, nil
 }
@@ -144,7 +182,7 @@ func TestProtectedRouteRequiresBearerToken(t *testing.T) {
 	router := newTestRouter(t)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusUnauthorized {

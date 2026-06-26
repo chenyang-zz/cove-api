@@ -16,3 +16,13 @@ type LoginRequest struct {
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
+
+type ProfileRequest struct {
+	Nickname *string `json:"nickname" binding:"omitempty,max=64"`
+	Email    *string `json:"email" binding:"omitempty,email,max=255"`
+}
+
+type PasswordRequest struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password" binding:"required,min=6,max=255"`
+}

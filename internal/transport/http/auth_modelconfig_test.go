@@ -74,7 +74,7 @@ func TestRegisterLoginAndCreateModelConfig(t *testing.T) {
 	}
 
 	create := httptest.NewRecorder()
-	createReq := httptest.NewRequest(http.MethodPost, "/api/model-configs", strings.NewReader(`{"type":"chat","provider":"deepseek","model":"deepseek-chat","base_url":"https://api.deepseek.com","api_key":"sk-secret","is_default":true}`))
+	createReq := httptest.NewRequest(http.MethodPost, "/api/model-configs/create", strings.NewReader(`{"type":"chat","provider":"deepseek","name":"DeepSeek Chat","model_name":"deepseek-chat","base_url":"https://api.deepseek.com","api_key":"sk-secret","capability":["function_call"],"is_default":true}`))
 	createReq.Header.Set("Content-Type", "application/json")
 	createReq.Header.Set("Authorization", "Bearer "+refreshBody.Data.AccessToken)
 	router.ServeHTTP(create, createReq)
@@ -86,5 +86,8 @@ func TestRegisterLoginAndCreateModelConfig(t *testing.T) {
 	}
 	if !strings.Contains(create.Body.String(), `"api_key_masked":"*****cret"`) {
 		t.Fatalf("model config response missing masked key: %s", create.Body.String())
+	}
+	if !strings.Contains(create.Body.String(), `"model_name":"deepseek-chat"`) || !strings.Contains(create.Body.String(), `"capability":["`) {
+		t.Fatalf("model config response missing new schema fields: %s", create.Body.String())
 	}
 }

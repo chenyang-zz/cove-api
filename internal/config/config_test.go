@@ -45,6 +45,7 @@ neo4j:
   database: yaml-db
 jwt:
   secret: yaml-secret
+  access_token_ttl: 2h
 secret_key: 12345678901234567890123456789012
 storage:
   backend: local
@@ -74,6 +75,9 @@ llm:
 	if cfg.LLM.Model != "gpt-4o-mini" || cfg.LLM.APIKey != "sk-yaml" {
 		t.Fatalf("cfg llm = %#v", cfg.LLM)
 	}
+	if cfg.JWT.Secret != "yaml-secret" || cfg.JWT.AccessTokenTTL != "2h" {
+		t.Fatalf("cfg jwt = %#v", cfg.JWT)
+	}
 }
 
 func TestLoadFileEnvOverridesYAML(t *testing.T) {
@@ -88,6 +92,7 @@ func TestLoadFileEnvOverridesYAML(t *testing.T) {
 	t.Setenv("NEO4J_PASSWORD", "env-password")
 	t.Setenv("NEO4J_DATABASE", "env-db")
 	t.Setenv("JWT_SECRET", "env-jwt")
+	t.Setenv("JWT_ACCESS_TOKEN_TTL", "30m")
 	t.Setenv("SECRET_KEY", "abcdefghijklmnopqrstuvwxyz123456")
 	t.Setenv("STORAGE_BACKEND", "env-storage")
 	t.Setenv("STORAGE_DIR", "/env/storage")
@@ -133,7 +138,7 @@ llm:
 	if cfg.Neo4j.URI != "bolt://env-neo4j:7687" || cfg.Neo4j.Username != "env-user" || cfg.Neo4j.Password != "env-password" || cfg.Neo4j.Database != "env-db" {
 		t.Fatalf("env override neo4j failed: %#v", cfg.Neo4j)
 	}
-	if cfg.JWT.Secret != "env-jwt" || cfg.LLM.APIKey != "sk-env" {
+	if cfg.JWT.Secret != "env-jwt" || cfg.JWT.AccessTokenTTL != "30m" || cfg.LLM.APIKey != "sk-env" {
 		t.Fatalf("env override secrets failed: %#v", cfg)
 	}
 }

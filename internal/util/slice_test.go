@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/boxify/api-go/internal/core/util"
+	"github.com/boxify/api-go/internal/util"
 )
 
 func TestHead(t *testing.T) {

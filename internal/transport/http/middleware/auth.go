@@ -6,6 +6,7 @@ import (
 
 	"github.com/boxify/api-go/internal/observability/xlog"
 	"github.com/boxify/api-go/internal/transport/http/response"
+	"github.com/boxify/api-go/internal/util"
 	"github.com/boxify/api-go/internal/xerr"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -49,7 +50,9 @@ func Auth(verifier TokenVerifier) gin.HandlerFunc {
 			return
 		}
 		c.Set(UserIDKey, userID)
-		c.Request = c.Request.WithContext(xlog.WithUserID(c.Request.Context(), userID.String()))
+		ctx := util.WithUserID(c.Request.Context(), userID)
+		ctx = xlog.WithUserID(ctx, userID.String())
+		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}
 }

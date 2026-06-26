@@ -1,35 +1,30 @@
 package handler
 
 import (
-	"github.com/boxify/api-go/internal/app"
-	"github.com/boxify/api-go/internal/transport/http/middleware"
+	authlogic "github.com/boxify/api-go/internal/logic/auth"
+	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/request"
 	"github.com/boxify/api-go/internal/transport/http/response"
+	"github.com/boxify/api-go/internal/util"
+	"github.com/boxify/api-go/internal/xerr"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type AuthHandler struct {
-	service *app.AuthService
+	svc *svc.ServiceContext
 }
 
-func NewAuthHandler(service *app.AuthService) AuthHandler {
-	return AuthHandler{service: service}
+func NewAuthHandler(svcCtx *svc.ServiceContext) AuthHandler {
+	return AuthHandler{svc: svcCtx}
 }
 
 func (h AuthHandler) Register(c *gin.Context) {
 	var body request.RegisterRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, err)
+		response.FromError(c, xerr.Validation(err))
 		return
 	}
-	out, err := h.service.Register(c.Request.Context(), app.RegisterInput{
-		Username: body.Username,
-		Nickname: body.Nickname,
-		Email:    body.Email,
-		Avatar:   body.Avatar,
-		Password: body.Password,
-	})
+	out, err := authlogic.NewRegisterLogic(c.Request.Context(), h.svc).Register(&body)
 	if err != nil {
 		response.FromError(c, err)
 		return
@@ -40,12 +35,10 @@ func (h AuthHandler) Register(c *gin.Context) {
 func (h AuthHandler) Login(c *gin.Context) {
 	var body request.LoginRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, err)
+		response.FromError(c, xerr.Validation(err))
 		return
 	}
-	out, err := h.service.Login(c.Request.Context(), app.LoginInput{
-		Login: body.Login, Password: body.Password,
-	})
+	out, err := authlogic.NewLoginLogic(c.Request.Context(), h.svc).Login(&body)
 	if err != nil {
 		response.FromError(c, err)
 		return
@@ -56,12 +49,10 @@ func (h AuthHandler) Login(c *gin.Context) {
 func (h AuthHandler) Refresh(c *gin.Context) {
 	var body request.RefreshRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, err)
+		response.FromError(c, xerr.Validation(err))
 		return
 	}
-	out, err := h.service.Refresh(c.Request.Context(), app.RefreshInput{
-		RefreshToken: body.RefreshToken,
-	})
+	out, err := authlogic.NewRefreshLogic(c.Request.Context(), h.svc).Refresh(&body)
 	if err != nil {
 		response.FromError(c, err)
 		return
@@ -69,7 +60,48 @@ func (h AuthHandler) Refresh(c *gin.Context) {
 	response.OK(c, out)
 }
 
-func (AuthHandler) Me(c *gin.Context) {
-	userID, _ := c.MustGet(middleware.UserIDKey).(uuid.UUID)
-	response.OK(c, map[string]string{"id": userID.String()})
+func (h AuthHandler) Me(c *gin.Context) {
+	out, err := authlogic.NewMeLogic(c.Request.Context(), h.svc).Me()
+	if err != nil {
+		response.FromError(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+func (h AuthHandler) Profile(c *gin.Context) {
+	var body request.ProfileRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.FromError(c, xerr.Validation(err))
+		return
+	}
+	userID, err := util.UserIDFromContext(c.Request.Context())
+	if err != nil {
+		response.FromError(c, err)
+		return
+	}
+	out, err := authlogic.NewProfileLogic(c.Request.Context(), h.svc).Profile(userID, &body)
+	if err != nil {
+		response.FromError(c, err)
+		return
+	}
+	response.OK(c, out)
+}
+
+func (h AuthHandler) Password(c *gin.Context) {
+	var body request.PasswordRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.FromError(c, xerr.Validation(err))
+		return
+	}
+	userID, err := util.UserIDFromContext(c.Request.Context())
+	if err != nil {
+		response.FromError(c, err)
+		return
+	}
+	if err := authlogic.NewPasswordLogic(c.Request.Context(), h.svc).Password(userID, &body); err != nil {
+		response.FromError(c, err)
+		return
+	}
+	response.OK(c, nil)
 }

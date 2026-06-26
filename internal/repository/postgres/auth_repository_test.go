@@ -8,7 +8,7 @@ import (
 
 	"github.com/boxify/api-go/internal/infrastructure/db/migration"
 	dbpostgres "github.com/boxify/api-go/internal/infrastructure/db/postgres"
-	"github.com/boxify/api-go/internal/repository"
+	"github.com/boxify/api-go/internal/models"
 	repositorypostgres "github.com/boxify/api-go/internal/repository/postgres"
 	"github.com/boxify/api-go/internal/xerr"
 	"github.com/google/uuid"
@@ -22,7 +22,7 @@ func TestUserRepositoryIntegrationWhenPostgresEnvIsConfigured(t *testing.T) {
 	email := "alice-" + uuid.NewString() + "@example.com"
 	username := "alice-" + uuid.NewString()
 
-	created, err := repo.Create(ctx, repository.User{
+	created, err := repo.Create(ctx, &models.User{
 		ID:           uuid.New(),
 		Username:     username,
 		Email:        &email,
@@ -46,7 +46,7 @@ func TestUserRepositoryIntegrationWhenPostgresEnvIsConfigured(t *testing.T) {
 		}
 	}
 
-	_, err = repo.Create(ctx, repository.User{
+	_, err = repo.Create(ctx, &models.User{
 		ID:           uuid.New(),
 		Username:     username,
 		PasswordHash: "hash",
@@ -62,7 +62,7 @@ func TestRefreshTokenRepositoryIntegrationWhenPostgresEnvIsConfigured(t *testing
 	userRepo := repositorypostgres.NewUserRepository(db)
 	tokenRepo := repositorypostgres.NewRefreshTokenRepository(db)
 	username := "token-" + uuid.NewString()
-	user, err := userRepo.Create(ctx, repository.User{
+	user, err := userRepo.Create(ctx, &models.User{
 		ID:           uuid.New(),
 		Username:     username,
 		PasswordHash: "hash",
@@ -76,7 +76,7 @@ func TestRefreshTokenRepositoryIntegrationWhenPostgresEnvIsConfigured(t *testing
 	})
 
 	tokenHash := "hash-" + uuid.NewString()
-	created, err := tokenRepo.Create(ctx, repository.RefreshToken{
+	created, err := tokenRepo.Create(ctx, &models.RefreshToken{
 		ID:        uuid.New(),
 		UserID:    user.ID,
 		TokenHash: tokenHash,

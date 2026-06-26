@@ -64,8 +64,26 @@ func Contains(a string, b string) bool {
 	return a != "" && b != "" && (strings.Contains(a, b) || strings.Contains(b, a))
 }
 
-func normalizeText(value string) string {
+func NormalizeRequired(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func NormalizeOptional(value *string, lower bool) *string {
+	if value == nil {
+		return nil
+	}
+	normalized := strings.TrimSpace(*value)
+	if normalized == "" {
+		return nil
+	}
+	if lower {
+		normalized = strings.ToLower(normalized)
+	}
+	return &normalized
+}
+
+func normalizeText(value string) string {
+	return NormalizeRequired(value)
 }
 
 func normalizeRunes(value string) []rune {

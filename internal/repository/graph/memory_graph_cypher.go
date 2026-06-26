@@ -6,8 +6,8 @@
 
 package graph
 
-const listEntitiesCypher = `
-MATCH (e:Entity {user_id: $user_id})
+const listEntitiesByTypeCypher = `
+MATCH (e:Entity {user_id: $user_id, type: $type})
 RETURN e {
 	.id,
 	.user_id,

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/boxify/api-go/internal/core/util"
+	"github.com/boxify/api-go/internal/util"
 )
 
 func TestISO8601OrNULLReturnsNULLForZeroTime(t *testing.T) {

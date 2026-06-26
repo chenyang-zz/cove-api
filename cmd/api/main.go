@@ -8,11 +8,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/boxify/api-go/internal/app"
 	"github.com/boxify/api-go/internal/config"
-	"github.com/boxify/api-go/internal/infrastructure/db/postgres"
 	"github.com/boxify/api-go/internal/observability/xlog"
-	repositorypostgres "github.com/boxify/api-go/internal/repository/postgres"
+	"github.com/boxify/api-go/internal/svc"
 	httptransport "github.com/boxify/api-go/internal/transport/http"
 )
 
@@ -23,41 +21,32 @@ func main() {
 		Level: slog.LevelInfo,
 		Color: true,
 	})
-	cipher, err := app.NewSecretCipher(cfg.SecretKey)
+
+	ctx := context.Background()
+	svcCtx, err := svc.New(ctx, cfg)
 	if err != nil {
-		slog.Error("create secret cipher", "error", err)
+		slog.Error("初始化服务上下文失败", "错误", err)
 		os.Exit(1)
 	}
-	db, err := postgres.NewGormDB(context.Background(), postgres.Config{URL: cfg.Database.URL})
-	if err != nil {
-		slog.Error("connect postgres", "error", err)
-		os.Exit(1)
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		slog.Error("get postgres db", "error", err)
-		os.Exit(1)
-	}
+
 	defer func() {
-		if err := sqlDB.Close(); err != nil {
-			slog.Error("close postgres", "error", err)
+		if err := svcCtx.Close(ctx); err != nil {
+			slog.Error("关闭服务上下文失败", "错误", err)
 		}
 	}()
-	userRepo := repositorypostgres.NewUserRepository(db)
-	refreshTokenRepo := repositorypostgres.NewRefreshTokenRepository(db)
+
 	router := httptransport.NewRouter(httptransport.Dependencies{
-		AuthService:        app.NewAuthService(userRepo, refreshTokenRepo, cfg.JWT.Secret),
-		ChatService:        app.NewChatService(),
-		ModelConfigService: app.NewModelConfigService(cipher),
+		Svc: svcCtx,
 	})
+
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr(),
 		Handler:           router,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	slog.Info("api server starting", "addr", cfg.HTTPAddr())
+	slog.Info("API 服务启动中", "地址", cfg.HTTPAddr())
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Error("api server stopped", "error", err)
+		slog.Error("API 服务异常停止", "错误", err)
 		os.Exit(1)
 	}
 }

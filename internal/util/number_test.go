@@ -3,7 +3,7 @@ package util_test
 import (
 	"testing"
 
-	"github.com/boxify/api-go/internal/core/util"
+	"github.com/boxify/api-go/internal/util"
 )
 
 func TestRoundKeepsRequestedDecimalPlaces(t *testing.T) {

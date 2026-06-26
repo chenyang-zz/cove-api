@@ -3,8 +3,8 @@ package http
 import (
 	"time"
 
-	"github.com/boxify/api-go/internal/app"
 	"github.com/boxify/api-go/internal/observability/xlog"
+	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/handler"
 	"github.com/boxify/api-go/internal/transport/http/middleware"
 	"github.com/boxify/api-go/internal/transport/http/response"
@@ -14,17 +14,14 @@ import (
 )
 
 type Dependencies struct {
-	AuthService           *app.AuthService
-	ChatService           *app.ChatService
-	ModelConfigService    *app.ModelConfigService
+	Svc                   *svc.ServiceContext
 	EnableDebugPanicRoute bool
 }
 
 func NewRouter(deps Dependencies) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	if deps.AuthService == nil || deps.ChatService == nil || deps.ModelConfigService == nil {
-		panic("http router dependencies are required")
-	}
+	response.RegisterValidatorTagNames()
+
 	r := gin.New()
 	r.Use(xlog.RecoveryMiddleware())
 	r.Use(xlog.GinMiddleware())
@@ -34,10 +31,10 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	})
 
 	health := handler.HealthHandler{}
-	auth := handler.NewAuthHandler(deps.AuthService)
-	chat := handler.NewChatHandler(deps.ChatService)
-	modelConfig := handler.NewModelConfigHandler(deps.ModelConfigService)
-	authMiddleware := middleware.Auth(deps.AuthService)
+	auth := handler.NewAuthHandler(deps.Svc)
+	chat := handler.NewChatHandler(deps.Svc)
+	modelConfig := handler.NewModelConfigHandler(deps.Svc)
+	authMiddleware := middleware.Auth(deps.Svc.TokenIssuer)
 
 	api := r.Group("/api")
 	routes.RegisterHealthRoutes(api, health)

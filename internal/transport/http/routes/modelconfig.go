@@ -7,6 +7,8 @@ import (
 
 func RegisterModelConfigRoutes(api *gin.RouterGroup, modelConfig handler.ModelConfigHandler, authMiddleware gin.HandlerFunc) {
 	modelConfigRoutes := api.Group("/model-configs", authMiddleware)
-	modelConfigRoutes.GET("", modelConfig.List)
-	modelConfigRoutes.POST("", modelConfig.Create)
+	// routegen: auth user_id input=request.ListModelsRequest output=response.ListModelsResponse
+	modelConfigRoutes.GET("/list", modelConfig.ListModels)
+	// routegen: auth user_id input=request.CreateModelRequest output=response.ModelResponse
+	modelConfigRoutes.POST("/create", modelConfig.CreateModel)
 }

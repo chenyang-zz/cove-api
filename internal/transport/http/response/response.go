@@ -8,9 +8,17 @@ import (
 )
 
 type Envelope struct {
-	Code    int    `json:"code"`
+	Code    int          `json:"code"`
+	Message string       `json:"message"`
+	Data    any          `json:"data,omitempty"`
+	Errors  []FieldError `json:"errors,omitempty"`
+}
+
+type FieldError struct {
+	Field   string `json:"field"`
+	Tag     string `json:"tag"`
+	Param   string `json:"param"`
 	Message string `json:"message"`
-	Data    any    `json:"data,omitempty"`
 }
 
 func OK(c *gin.Context, data any) {
@@ -19,7 +27,7 @@ func OK(c *gin.Context, data any) {
 
 func FromError(c *gin.Context, err error) {
 	status, code, message := xerr.ToHTTP(err)
-	c.JSON(status, Envelope{Code: code, Message: message})
+	c.JSON(status, Envelope{Code: code, Message: message, Errors: validationFieldErrors(err)})
 }
 
 func BadRequest(c *gin.Context, err error) {

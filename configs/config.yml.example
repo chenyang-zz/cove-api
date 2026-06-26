@@ -22,6 +22,7 @@ neo4j:
 
 jwt:
   secret: change-me
+  access_token_ttl: 168h
 
 secret_key: 0123456789abcdef0123456789abcdef
 

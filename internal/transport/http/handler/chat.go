@@ -4,34 +4,36 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/boxify/api-go/internal/app"
 	"github.com/boxify/api-go/internal/domain"
+	chatlogic "github.com/boxify/api-go/internal/logic/chat"
+	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/middleware"
 	"github.com/boxify/api-go/internal/transport/http/request"
 	"github.com/boxify/api-go/internal/transport/http/response"
+	"github.com/boxify/api-go/internal/xerr"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type ChatHandler struct {
-	service *app.ChatService
+	svc *svc.ServiceContext
 }
 
-func NewChatHandler(service *app.ChatService) ChatHandler {
-	return ChatHandler{service: service}
+func NewChatHandler(svcCtx *svc.ServiceContext) ChatHandler {
+	return ChatHandler{svc: svcCtx}
 }
 
 func (h ChatHandler) Stream(c *gin.Context) {
 	var body request.ChatStreamRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.BadRequest(c, err)
+		response.FromError(c, xerr.Validation(err))
 		return
 	}
 	userID, _ := c.MustGet(middleware.UserIDKey).(uuid.UUID)
-	events, err := h.service.Stream(c.Request.Context(), domain.ChatStreamInput{
+	events, err := chatlogic.NewStreamLogic(c.Request.Context(), h.svc).Stream(domain.ChatStreamInput{
 		UserID:  userID,
 		Message: body.Message,
-	})
+	}, &body)
 	if err != nil {
 		response.FromError(c, err)
 		return

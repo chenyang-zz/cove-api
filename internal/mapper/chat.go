@@ -58,6 +58,14 @@ func EventStreamToResponse(ctx context.Context, events <-chan domain.Event) <-ch
 				if !ok {
 					return
 				}
+				if event != nil && event.EventName() == domain.EventTypePing {
+					select {
+					case <-ctx.Done():
+						return
+					case out <- response.NewCommentEvent("ping"):
+					}
+					continue
+				}
 				select {
 				case <-ctx.Done():
 					return

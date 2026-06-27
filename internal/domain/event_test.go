@@ -75,6 +75,11 @@ func TestEventConstructors(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:      "ping",
+			event:     NewPingEvent(),
+			eventType: EventTypePing,
+		},
 	}
 
 	for _, tt := range tests {

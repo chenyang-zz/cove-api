@@ -70,3 +70,41 @@ func TestEventStreamToResponseMapsAndCloses(t *testing.T) {
 		t.Fatalf("events = %q/%q, want token/done", first.EventName(), second.EventName())
 	}
 }
+
+func TestEventStreamToResponseMapsPingToComment(t *testing.T) {
+	events := make(chan domain.Event, 1)
+	events <- domain.NewPingEvent()
+	close(events)
+
+	out := mapper.EventStreamToResponse(context.Background(), events)
+	got, ok := <-out
+	if !ok {
+		t.Fatal("response missing")
+	}
+	comment, ok := got.(*response.CommentEvent)
+	if !ok {
+		t.Fatalf("response type = %T, want *response.CommentEvent", got)
+	}
+	if comment.Comment() != "ping" {
+		t.Fatalf("comment = %q, want ping", comment.Comment())
+	}
+}
+
+func TestEventStreamToResponseMapsNilEventToError(t *testing.T) {
+	events := make(chan domain.Event, 1)
+	events <- nil
+	close(events)
+
+	out := mapper.EventStreamToResponse(context.Background(), events)
+	got, ok := <-out
+	if !ok {
+		t.Fatal("response missing")
+	}
+	event, ok := got.(*response.BaseEvent)
+	if !ok {
+		t.Fatalf("response type = %T, want *response.BaseEvent", got)
+	}
+	if event.EventName() != domain.EventTypeError {
+		t.Fatalf("event = %q, want error", event.EventName())
+	}
+}

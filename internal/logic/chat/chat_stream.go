@@ -8,6 +8,7 @@ import (
 
 	"github.com/boxify/api-go/internal/core/llm"
 	"github.com/boxify/api-go/internal/domain"
+	"github.com/boxify/api-go/internal/infrastructure/realtime"
 	"github.com/boxify/api-go/internal/models"
 	"github.com/boxify/api-go/internal/observability/xlog"
 	"github.com/boxify/api-go/internal/svc"
@@ -80,18 +81,44 @@ func (l *ChatStreamLogic) ChatStream(userID uuid.UUID, input *request.ChatStream
 		return nil, err
 	}
 
-	// 先建立订阅再触发生成，消除「token 早于订阅而漏收」的竞态
+	broker := l.realtimeBroker()
+	topic := realtime.ConversationTopic(conversation.ID)
+	subscription, err := broker.Subscribe(l.ctx, topic)
+	if err != nil {
+		return nil, err
+	}
 
-	_ = l
-	_ = userID
+	events := make(chan domain.Event, 16)
+	go func() {
+		select {
+		case <-l.ctx.Done():
+			close(events)
+			_ = subscription.Close(context.Background())
+			return
+		case events <- domain.NewMetaEvent(conversation.ID, conversation.Title):
+		}
+		_ = realtime.Forward(l.ctx, subscription, events, realtime.ForwardOptions{})
+	}()
 
-	events := make(chan domain.Event, 3)
-	// 后续这里会切到后台生成 + Redis 订阅转发：客户端断开只停止转发，生成任务仍可落库并支持续传。
-	events <- domain.NewMetaEvent(conversation.ID, conversation.Title)
-	events <- domain.NewTokenEvent("345")
-	events <- domain.NewDoneEvent("789")
-	close(events)
+	go l.runChatTurn(context.WithoutCancel(l.ctx), broker, topic)
 	return events, nil
+}
+
+func (l *ChatStreamLogic) realtimeBroker() realtime.Broker {
+	if l.svcCtx != nil && l.svcCtx.Redis != nil && l.svcCtx.Redis.Raw() != nil {
+		return realtime.NewRedisBroker(l.svcCtx.Redis.Raw())
+	}
+	return realtime.NewMemoryBroker()
+}
+
+func (l *ChatStreamLogic) runChatTurn(ctx context.Context, broker realtime.Broker, topic string) {
+	if err := broker.Publish(ctx, topic, domain.NewTokenEvent("345")); err != nil {
+		l.log.WarnContext(ctx, "发布 token 事件失败", slog.String("error", err.Error()))
+		return
+	}
+	if err := broker.Publish(ctx, topic, domain.NewDoneEvent("789")); err != nil {
+		l.log.WarnContext(ctx, "发布 done 事件失败", slog.String("error", err.Error()))
+	}
 }
 
 func (l *ChatStreamLogic) ensureConversation(userID uuid.UUID, conversationIDStr string, message string) (*models.Conversation, error) {

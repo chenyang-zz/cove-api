@@ -63,3 +63,23 @@ func TestStreamEventsWithNilChannelReturns(t *testing.T) {
 		t.Fatalf("body = %q, want empty", got)
 	}
 }
+
+func TestStreamEventsWritesCommentEvents(t *testing.T) {
+	events := make(chan *CommentEvent, 1)
+	events <- NewCommentEvent("ping")
+	close(events)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/events", nil)
+
+	StreamEvents(c, events)
+
+	body := w.Body.String()
+	if !strings.Contains(body, ": ping\n\n") {
+		t.Fatalf("body missing ping comment:\n%s", body)
+	}
+	if strings.Contains(body, "event:") {
+		t.Fatalf("comment event should not write event field:\n%s", body)
+	}
+}

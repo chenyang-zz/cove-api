@@ -13,6 +13,7 @@ const (
 	EventTypeDone  = "done"
 	EventTypeMeta  = "meta"
 	EventTypeError = "error"
+	EventTypePing  = "_ping"
 )
 
 type Event interface {
@@ -71,6 +72,10 @@ func NewErrorEvent(message string) *ErrorEvent {
 		BaseEvent: BaseEvent{Type: EventTypeError},
 		Message:   message,
 	}
+}
+
+func NewPingEvent() *BaseEvent {
+	return NewBaseEvent(EventTypePing)
 }
 
 func (e *BaseEvent) EventName() string {

@@ -39,7 +39,7 @@ func (l *CreateConversationLogic) CreateConversation(userID uuid.UUID, input *re
 		conversation.Title = *input.Title
 	}
 
-	conversation, err := l.svcCtx.ConversationRepo.Create(l.ctx, conversation)
+	conversation, err := l.svcCtx.ConversationRepo.Create(l.ctx, userID, conversation)
 	if err != nil {
 		return nil, err
 	}

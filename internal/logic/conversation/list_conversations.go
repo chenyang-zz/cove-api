@@ -5,7 +5,6 @@ import (
 	"log/slog"
 
 	"github.com/boxify/api-go/internal/mapper"
-	"github.com/boxify/api-go/internal/models"
 	"github.com/boxify/api-go/internal/observability/xlog"
 	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/response"
@@ -27,10 +26,7 @@ func NewListConversationsLogic(ctx context.Context, svcCtx *svc.ServiceContext) 
 }
 
 func (l *ListConversationsLogic) ListConversations(userID uuid.UUID) (*response.ListResponse[*response.ConversationResponse], error) {
-	conversation := &models.Conversation{
-		UserID: userID,
-	}
-	rows, err := l.svcCtx.ConversationRepo.List(l.ctx, conversation)
+	rows, err := l.svcCtx.ConversationRepo.List(l.ctx, userID)
 	if err != nil {
 		return nil, err
 	}

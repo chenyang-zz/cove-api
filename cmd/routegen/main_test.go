@@ -65,6 +65,59 @@ func TestParseDirectiveGroupSupportsAtRoutegenProtocol(t *testing.T) {
 	}
 }
 
+func TestParseDirectiveGroupSupportsNewAnnotationProtocol(t *testing.T) {
+	group := commentGroup(
+		"// 普通注释会被 description 覆盖。",
+		"// @auth(user_id)",
+		"// @description 重命名会话",
+		"// 修改当前用户拥有的会话标题。",
+		"// 标题不能为空。",
+		"// @summary 重命名会话",
+		"// @input request.RenameConversationRequest",
+		"// @response ConversationResponse",
+	)
+
+	directive, comments, ok := parseDirectiveGroup(group)
+	if !ok {
+		t.Fatal("parseDirectiveGroup ok = false, want true")
+	}
+	if !directive.Auth || !directive.UserID {
+		t.Fatalf("directive auth/userID = %v/%v, want true/true", directive.Auth, directive.UserID)
+	}
+	if directive.Input != "request.RenameConversationRequest" {
+		t.Fatalf("input = %q", directive.Input)
+	}
+	if directive.Output != "response.ConversationResponse" {
+		t.Fatalf("output = %q, want response.ConversationResponse", directive.Output)
+	}
+	if directive.Summary != "重命名会话" {
+		t.Fatalf("summary = %q", directive.Summary)
+	}
+	wantDescription := []string{"重命名会话", "修改当前用户拥有的会话标题。", "标题不能为空。"}
+	if strings.Join(comments, "\n") != strings.Join(wantDescription, "\n") {
+		t.Fatalf("comments = %#v, want %#v", comments, wantDescription)
+	}
+}
+
+func TestParseDirectiveGroupSupportsAuthWithoutUserIDAndResponseNormalization(t *testing.T) {
+	group := commentGroup(
+		"// @auth",
+		"// @input request.ListConversationRequest",
+		"// @response ListResponse[*response.ConversationResponse]",
+	)
+
+	directive, _, ok := parseDirectiveGroup(group)
+	if !ok {
+		t.Fatal("parseDirectiveGroup ok = false, want true")
+	}
+	if !directive.Auth || directive.UserID {
+		t.Fatalf("directive auth/userID = %v/%v, want true/false", directive.Auth, directive.UserID)
+	}
+	if directive.Output != "response.ListResponse[*response.ConversationResponse]" {
+		t.Fatalf("output = %q", directive.Output)
+	}
+}
+
 func TestScanRoutesParsesRouteDirectiveAndHandlerType(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "internal/transport/http/routes/book.go", `package routes
@@ -327,6 +380,81 @@ func RegisterBookRoutes(api *gin.RouterGroup, book handler.BookHandler) {
 	}
 }
 
+func TestGenerateUsesMultilineDescriptionMethodComment(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "internal/transport/http/routes/conversation.go", `package routes
+
+import (
+	"github.com/boxify/api-go/internal/transport/http/handler"
+	"github.com/gin-gonic/gin"
+)
+
+func RegisterConversationRoutes(api *gin.RouterGroup, conversation handler.ConversationHandler, authMiddleware gin.HandlerFunc) {
+	conversationRoutes := api.Group("/conversation", authMiddleware)
+	// 普通注释不会进入 GoDoc。
+	// @auth(user_id)
+	// @description 重命名会话
+	// 修改当前用户拥有的会话标题。
+	// 标题不能为空。
+	// @summary 会话标题更新
+	// @input request.RenameConversationRequest
+	// @response ConversationResponse
+	conversationRoutes.PATCH("/:conversation_id", conversation.RenameConversation)
+}
+`)
+
+	if _, err := Generate(root); err != nil {
+		t.Fatalf("Generate error = %v", err)
+	}
+
+	logicFile := readFile(t, root, "internal/logic/conversation/rename_conversation.go")
+	for _, want := range []string{
+		"// RenameConversation 重命名会话\n// 修改当前用户拥有的会话标题。\n// 标题不能为空。",
+		"func (l *RenameConversationLogic) RenameConversation(userID uuid.UUID, input *request.RenameConversationRequest) (*response.ConversationResponse, error)",
+	} {
+		if !strings.Contains(logicFile, want) {
+			t.Fatalf("logic file missing %q:\n%s", want, logicFile)
+		}
+	}
+	if strings.Contains(logicFile, "普通注释不会进入 GoDoc") {
+		t.Fatalf("description should override normal comments:\n%s", logicFile)
+	}
+	if strings.Contains(logicFile, "会话标题更新") {
+		t.Fatalf("summary should not be used as logic GoDoc:\n%s", logicFile)
+	}
+}
+
+func TestGenerateDoesNotDuplicateMethodNameInDescription(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "internal/transport/http/routes/conversation.go", `package routes
+
+import (
+	"github.com/boxify/api-go/internal/transport/http/handler"
+	"github.com/gin-gonic/gin"
+)
+
+func RegisterConversationRoutes(api *gin.RouterGroup, conversation handler.ConversationHandler) {
+	conversationRoutes := api.Group("/conversation")
+	// @description RenameConversation 重命名会话
+	// @input request.RenameConversationRequest
+	// @response ConversationResponse
+	conversationRoutes.PATCH("/:conversation_id", conversation.RenameConversation)
+}
+`)
+
+	if _, err := Generate(root); err != nil {
+		t.Fatalf("Generate error = %v", err)
+	}
+
+	logicFile := readFile(t, root, "internal/logic/conversation/rename_conversation.go")
+	if !strings.Contains(logicFile, "// RenameConversation 重命名会话") {
+		t.Fatalf("logic file missing description comment:\n%s", logicFile)
+	}
+	if strings.Contains(logicFile, "// RenameConversation RenameConversation") {
+		t.Fatalf("logic file duplicated method name:\n%s", logicFile)
+	}
+}
+
 func TestGenerateDoesNotDuplicateMethodNameInCustomLogicComment(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "internal/transport/http/routes/book.go", `package routes
@@ -462,7 +590,7 @@ func RegisterBookRoutes(api *gin.RouterGroup, book handler.BookHandler, authMidd
 	handlerFile := readFile(t, root, "internal/transport/http/handler/book.go")
 	for _, want := range []string{
 		"var body request.UpdateBookRequest",
-		"c.ShouldBindUri(&body)",
+		"c.ShouldBindUri(&body.UriOnlyRequest)",
 		"c.ShouldBindJSON(&body)",
 		"booklogic.NewUpdateLogic(c.Request.Context(), h.svc).Update(userID, &body)",
 	} {
@@ -470,8 +598,57 @@ func RegisterBookRoutes(api *gin.RouterGroup, book handler.BookHandler, authMidd
 			t.Fatalf("handler file missing %q:\n%s", want, handlerFile)
 		}
 	}
-	if strings.Index(handlerFile, "ShouldBindUri(&body)") > strings.Index(handlerFile, "ShouldBindJSON(&body)") {
+	if strings.Contains(handlerFile, "ShouldBindUri(&body)") {
+		t.Fatalf("composite DTO should bind URI-only embedded struct:\n%s", handlerFile)
+	}
+	if strings.Index(handlerFile, "ShouldBindUri(&body.UriOnlyRequest)") > strings.Index(handlerFile, "ShouldBindJSON(&body)") {
 		t.Fatalf("URI binding should be generated before JSON binding:\n%s", handlerFile)
+	}
+}
+
+func TestGenerateUsesEmbeddedURIOnlyBindingForRequiredJSONBody(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "internal/transport/http/request/conversation.go", `package request
+
+type UriConversationIDRequest struct {
+	ConversationID string `+"`uri:\"conversation_id\" binding:\"required\"`"+`
+}
+
+type RenameConversationRequest struct {
+	UriConversationIDRequest
+	Title string `+"`json:\"title\" binding:\"required,min=1,max=256\"`"+`
+}
+`)
+	writeFile(t, root, "internal/transport/http/routes/conversation.go", `package routes
+
+import (
+	"github.com/boxify/api-go/internal/transport/http/handler"
+	"github.com/gin-gonic/gin"
+)
+
+func RegisterConversationRoutes(api *gin.RouterGroup, conversation handler.ConversationHandler, authMiddleware gin.HandlerFunc) {
+	conversationRoutes := api.Group("/conversation", authMiddleware)
+	// routegen: auth user_id input=request.RenameConversationRequest output=response.ConversationResponse
+	conversationRoutes.PATCH("/:conversation_id", conversation.RenameConversation)
+}
+`)
+
+	if _, err := Generate(root); err != nil {
+		t.Fatalf("Generate error = %v", err)
+	}
+
+	handlerFile := readFile(t, root, "internal/transport/http/handler/conversation.go")
+	for _, want := range []string{
+		"var body request.RenameConversationRequest",
+		"c.ShouldBindUri(&body.UriConversationIDRequest)",
+		"c.ShouldBindJSON(&body)",
+	} {
+		if !strings.Contains(handlerFile, want) {
+			t.Fatalf("handler file missing %q:\n%s", want, handlerFile)
+		}
+	}
+	if strings.Contains(handlerFile, "ShouldBindUri(&body)") {
+		t.Fatalf("composite DTO should not bind complete body for URI:\n%s", handlerFile)
 	}
 }
 
@@ -637,7 +814,7 @@ func RegisterBookRoutes(api *gin.RouterGroup, book handler.BookHandler, authMidd
 	handlerFile := readFile(t, root, "internal/transport/http/handler/book.go")
 	for _, want := range []string{
 		"var body request.UploadBookCoverRequest",
-		"c.ShouldBindUri(&body)",
+		"c.ShouldBindUri(&body.UriOnlyRequest)",
 		"c.ShouldBind(&body)",
 		"booklogic.NewUploadCoverLogic(c.Request.Context(), h.svc).UploadCover(userID, &body)",
 	} {
@@ -645,11 +822,137 @@ func RegisterBookRoutes(api *gin.RouterGroup, book handler.BookHandler, authMidd
 			t.Fatalf("handler file missing %q:\n%s", want, handlerFile)
 		}
 	}
-	if strings.Index(handlerFile, "ShouldBindUri(&body)") > strings.Index(handlerFile, "ShouldBind(&body)") {
+	if strings.Contains(handlerFile, "ShouldBindUri(&body)") {
+		t.Fatalf("composite multipart DTO should bind URI-only embedded struct:\n%s", handlerFile)
+	}
+	if strings.Index(handlerFile, "ShouldBindUri(&body.UriOnlyRequest)") > strings.Index(handlerFile, "ShouldBind(&body)") {
 		t.Fatalf("URI binding should be generated before multipart binding:\n%s", handlerFile)
 	}
 	if strings.Contains(handlerFile, "ShouldBindJSON") {
 		t.Fatalf("multipart input should not bind JSON:\n%s", handlerFile)
+	}
+}
+
+func TestGenerateUsesEmbeddedURIOnlyBindingForGETQueryInput(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "internal/transport/http/request/book.go", `package request
+
+type UriProjectIDRequest struct {
+	ProjectID string `+"`uri:\"project_id\" binding:\"required\"`"+`
+}
+
+type ListProjectBooksRequest struct {
+	UriProjectIDRequest
+	Type string `+"`form:\"type\" binding:\"omitempty\"`"+`
+}
+`)
+	writeFile(t, root, "internal/transport/http/routes/book.go", `package routes
+
+import (
+	"github.com/boxify/api-go/internal/transport/http/handler"
+	"github.com/gin-gonic/gin"
+)
+
+func RegisterBookRoutes(api *gin.RouterGroup, book handler.BookHandler, authMiddleware gin.HandlerFunc) {
+	bookRoutes := api.Group("/projects", authMiddleware)
+	// routegen: auth user_id input=request.ListProjectBooksRequest output=response.ListBooksResponse
+	bookRoutes.GET("/:project_id/books", book.ListProjectBooks)
+}
+`)
+
+	if _, err := Generate(root); err != nil {
+		t.Fatalf("Generate error = %v", err)
+	}
+
+	handlerFile := readFile(t, root, "internal/transport/http/handler/book.go")
+	for _, want := range []string{
+		"var query request.ListProjectBooksRequest",
+		"c.ShouldBindUri(&query.UriProjectIDRequest)",
+		"c.ShouldBindQuery(&query)",
+	} {
+		if !strings.Contains(handlerFile, want) {
+			t.Fatalf("handler file missing %q:\n%s", want, handlerFile)
+		}
+	}
+	if strings.Contains(handlerFile, "ShouldBindUri(&query)") {
+		t.Fatalf("composite query DTO should bind URI-only embedded struct:\n%s", handlerFile)
+	}
+	if strings.Index(handlerFile, "ShouldBindUri(&query.UriProjectIDRequest)") > strings.Index(handlerFile, "ShouldBindQuery(&query)") {
+		t.Fatalf("URI binding should be generated before query binding:\n%s", handlerFile)
+	}
+}
+
+func TestGenerateKeepsCompleteDTOURISelectorForDirectURIFields(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "internal/transport/http/request/book.go", `package request
+
+type RenameBookRequest struct {
+	ID string `+"`uri:\"id\" binding:\"required\"`"+`
+	Title string `+"`json:\"title\" binding:\"required\"`"+`
+}
+`)
+	writeFile(t, root, "internal/transport/http/routes/book.go", `package routes
+
+import (
+	"github.com/boxify/api-go/internal/transport/http/handler"
+	"github.com/gin-gonic/gin"
+)
+
+func RegisterBookRoutes(api *gin.RouterGroup, book handler.BookHandler) {
+	bookRoutes := api.Group("/books")
+	// routegen: input=request.RenameBookRequest output=response.BookResponse
+	bookRoutes.PATCH("/:id", book.Rename)
+}
+`)
+
+	if _, err := Generate(root); err != nil {
+		t.Fatalf("Generate error = %v", err)
+	}
+
+	handlerFile := readFile(t, root, "internal/transport/http/handler/book.go")
+	if !strings.Contains(handlerFile, "c.ShouldBindUri(&body)") {
+		t.Fatalf("direct URI field DTO should bind complete body:\n%s", handlerFile)
+	}
+}
+
+func TestGenerateFailsForMultipleEmbeddedURIOnlyRequests(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "internal/transport/http/request/book.go", `package request
+
+type UriBookIDRequest struct {
+	BookID string `+"`uri:\"book_id\" binding:\"required\"`"+`
+}
+
+type UriChapterIDRequest struct {
+	ChapterID string `+"`uri:\"chapter_id\" binding:\"required\"`"+`
+}
+
+type UpdateChapterRequest struct {
+	UriBookIDRequest
+	UriChapterIDRequest
+	Title string `+"`json:\"title\" binding:\"required\"`"+`
+}
+`)
+	writeFile(t, root, "internal/transport/http/routes/book.go", `package routes
+
+import (
+	"github.com/boxify/api-go/internal/transport/http/handler"
+	"github.com/gin-gonic/gin"
+)
+
+func RegisterBookRoutes(api *gin.RouterGroup, book handler.BookHandler) {
+	bookRoutes := api.Group("/books")
+	// routegen: input=request.UpdateChapterRequest output=response.BookResponse
+	bookRoutes.PATCH("/:book_id/chapters/:chapter_id", book.UpdateChapter)
+}
+`)
+
+	_, err := Generate(root)
+	if err == nil {
+		t.Fatal("Generate error = nil, want multiple embedded URI-only error")
+	}
+	if !strings.Contains(err.Error(), "multiple embedded URI-only") {
+		t.Fatalf("Generate error = %v, want multiple embedded URI-only message", err)
 	}
 }
 

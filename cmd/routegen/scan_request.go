@@ -38,6 +38,9 @@ func scanRequestDTOs(root string) (map[string]RequestDTO, error) {
 		out[name] = RequestDTO{
 			HasJSONBody:      requestStructHasJSONBody(name, structs, map[string]bool{}),
 			HasMultipartBody: requestStructHasMultipartBody(name, structs, map[string]bool{}),
+			HasDirectURI:     requestStructHasDirectURI(name, structs),
+			IsURIOnly:        requestStructIsURIOnly(name, structs, map[string]bool{}),
+			EmbeddedURIOnly:  requestStructEmbeddedURIOnlyTypes(name, structs),
 		}
 	}
 	return out, nil
@@ -106,6 +109,65 @@ func requestStructHasMultipartBody(name string, structs map[string]requestStruct
 		}
 	}
 	return false
+}
+
+func requestStructHasDirectURI(name string, structs map[string]requestStruct) bool {
+	info, ok := structs[name]
+	if !ok {
+		return false
+	}
+	for _, field := range info.Fields {
+		if tagName(field.URITag) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func requestStructEmbeddedURIOnlyTypes(name string, structs map[string]requestStruct) []string {
+	info, ok := structs[name]
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, field := range info.Fields {
+		if field.EmbeddedType == "" {
+			continue
+		}
+		if requestStructIsURIOnly(field.EmbeddedType, structs, map[string]bool{}) {
+			out = append(out, field.EmbeddedType)
+		}
+	}
+	return out
+}
+
+func requestStructIsURIOnly(name string, structs map[string]requestStruct, visiting map[string]bool) bool {
+	if visiting[name] {
+		return false
+	}
+	info, ok := structs[name]
+	if !ok {
+		return false
+	}
+	visiting[name] = true
+	defer delete(visiting, name)
+
+	hasURI := false
+	for _, field := range info.Fields {
+		if tagName(field.JSONTag) != "" || tagName(field.FormTag) != "" || field.HasMultipartFile {
+			return false
+		}
+		if tagName(field.URITag) != "" {
+			hasURI = true
+			continue
+		}
+		if field.EmbeddedType != "" && requestStructIsURIOnly(field.EmbeddedType, structs, visiting) {
+			hasURI = true
+			continue
+		}
+		return false
+	}
+	return hasURI
 }
 
 func requestEmbeddedTypeName(expr ast.Expr) string {

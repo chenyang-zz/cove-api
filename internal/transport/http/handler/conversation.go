@@ -53,7 +53,7 @@ func (h ConversationHandler) ListConversations(c *gin.Context) {
 
 func (h ConversationHandler) RenameConversation(c *gin.Context) {
 	var body request.RenameConversationRequest
-	if err := c.ShouldBindUri(&body); err != nil {
+	if err := c.ShouldBindUri(&body.UriConversationIDRequest); err != nil {
 		response.FromError(c, xerr.Validation(err))
 		return
 	}

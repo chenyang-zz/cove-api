@@ -55,11 +55,13 @@ var httpMethods = map[string]struct{}{
 }
 
 type Directive struct {
-	Input  string
-	Output string
-	Auth   bool
-	UserID bool
-	SSE    bool
+	Input       string
+	Output      string
+	Description []string
+	Summary     string
+	Auth        bool
+	UserID      bool
+	SSE         bool
 }
 
 type Route struct {
@@ -76,6 +78,9 @@ type Route struct {
 type RequestDTO struct {
 	HasJSONBody      bool
 	HasMultipartBody bool
+	HasDirectURI     bool
+	IsURIOnly        bool
+	EmbeddedURIOnly  []string
 }
 
 type requestStruct struct {

@@ -35,7 +35,11 @@ func New%[1]s(svcCtx *svc.ServiceContext) %[1]s {
 			report.Add(FileSkipped, path)
 			continue
 		}
-		snippets = append(snippets, handlerMethodSnippet(route, requestDTOs))
+		snippet, err := handlerMethodSnippet(route, requestDTOs)
+		if err != nil {
+			return err
+		}
+		snippets = append(snippets, snippet)
 		existing[key] = handlerPath(root, domain)
 	}
 	if len(snippets) == 0 {
@@ -92,14 +96,18 @@ func handlerImports(domain string, routes []Route, includeSvc bool) []string {
 	return imports
 }
 
-func handlerMethodSnippet(route Route, requestDTOs map[string]RequestDTO) string {
+func handlerMethodSnippet(route Route, requestDTOs map[string]RequestDTO) (string, error) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "func (h %s) %s(c *gin.Context) {\n", route.HandlerType, route.HandlerMethod)
 	if route.Directive.Input != "" {
 		inputVar, bindMethod := handlerInputBinding(route)
 		fmt.Fprintf(&b, "\tvar %s %s\n", inputVar, route.Directive.Input)
 		if routeHasURIParam(route) {
-			fmt.Fprintf(&b, "\tif err := c.ShouldBindUri(&%s); err != nil {\n", inputVar)
+			uriTarget, err := handlerURIBindTarget(route, inputVar, requestDTOs)
+			if err != nil {
+				return "", err
+			}
+			fmt.Fprintf(&b, "\tif err := c.ShouldBindUri(%s); err != nil {\n", uriTarget)
 			b.WriteString("\t\tresponse.FromError(c, xerr.Validation(err))\n")
 			b.WriteString("\t\treturn\n")
 			b.WriteString("\t}\n")
@@ -131,7 +139,7 @@ func handlerMethodSnippet(route Route, requestDTOs map[string]RequestDTO) string
 		b.WriteString("\t_ = events\n")
 		b.WriteString("\tresponse.OK(c, map[string]any{})\n")
 		b.WriteString("}\n")
-		return b.String()
+		return b.String(), nil
 	}
 	if route.Directive.Output == "" {
 		fmt.Fprintf(&b, "\tif err := %slogic.New%sLogic(c.Request.Context(), h.svc).%s(%s); err != nil {\n", route.Domain, route.HandlerMethod, route.HandlerMethod, strings.Join(callArgs, ", "))
@@ -140,7 +148,7 @@ func handlerMethodSnippet(route Route, requestDTOs map[string]RequestDTO) string
 		b.WriteString("\t}\n")
 		b.WriteString("\tresponse.OK(c, nil)\n")
 		b.WriteString("}\n")
-		return b.String()
+		return b.String(), nil
 	}
 	fmt.Fprintf(&b, "\tout, err := %slogic.New%sLogic(c.Request.Context(), h.svc).%s(%s)\n", route.Domain, route.HandlerMethod, route.HandlerMethod, strings.Join(callArgs, ", "))
 	b.WriteString("\tif err != nil {\n")
@@ -149,7 +157,7 @@ func handlerMethodSnippet(route Route, requestDTOs map[string]RequestDTO) string
 	b.WriteString("\t}\n")
 	b.WriteString("\tresponse.OK(c, out)\n")
 	b.WriteString("}\n")
-	return b.String()
+	return b.String(), nil
 }
 
 func handlerInputBinding(route Route) (inputVar string, bindMethod string) {
@@ -157,6 +165,24 @@ func handlerInputBinding(route Route) (inputVar string, bindMethod string) {
 		return "query", "ShouldBindQuery"
 	}
 	return "body", "ShouldBindJSON"
+}
+
+func handlerURIBindTarget(route Route, inputVar string, requestDTOs map[string]RequestDTO) (string, error) {
+	typeName := requestTypeName(route.Directive.Input)
+	dto, ok := requestDTOs[typeName]
+	if !ok {
+		return "&" + inputVar, nil
+	}
+	if dto.HasDirectURI {
+		return "&" + inputVar, nil
+	}
+	if len(dto.EmbeddedURIOnly) > 1 {
+		return "", fmt.Errorf("routegen: %s.%s input %s has multiple embedded URI-only request DTOs: %s", route.HandlerType, route.HandlerMethod, route.Directive.Input, strings.Join(dto.EmbeddedURIOnly, ", "))
+	}
+	if len(dto.EmbeddedURIOnly) == 1 && !dto.IsURIOnly {
+		return "&" + inputVar + "." + dto.EmbeddedURIOnly[0], nil
+	}
+	return "&" + inputVar, nil
 }
 
 func routeShouldBindJSON(route Route, requestDTOs map[string]RequestDTO) bool {

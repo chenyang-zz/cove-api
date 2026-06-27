@@ -17,7 +17,10 @@ func RegisterConversationRoutes(api *gin.RouterGroup, conversation handler.Conve
 	conversationRoutes.POST("/", conversation.CreateConversation)
 	// routegen: auth user_id output=response.ListResponse[*response.ConversationResponse]
 	conversationRoutes.GET("/", conversation.ListConversations)
-	// 重命名会话
-	// routegen: auth user_id input=request.RenameConversationRequest output=response.ConversationResponse
+	// @auth(user_id)
+	// @description 重命名会话
+	// @input request.RenameConversationRequest
+	// @response ConversationResponse
 	conversationRoutes.PATCH("/:conversation_id", conversation.RenameConversation)
+	conversationRoutes.POST("/:conversation_id/rename", conversation.RenameConversation)
 }

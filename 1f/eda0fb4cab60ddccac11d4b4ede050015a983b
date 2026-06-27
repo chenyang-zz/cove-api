@@ -1,0 +1,34 @@
+internal/mapper/conversation.go
+  h_e1f1392360ad67 12,43-74,76-84
+internal/repository/postgres/message_feedback.go
+  h_e1f1392360ad67 1-120
+internal/transport/http/response/conversation.go
+  h_e1f1392360ad67 24-40
+internal/svc/context.go
+  h_e1f1392360ad67 31,38-39,67-68,79-80,110,116,174,177,180,182,188-191,193
+internal/transport/http/routes/conversation.go
+  h_e1f1392360ad67 31-35
+internal/repository/message.go
+  h_e1f1392360ad67 14
+internal/infrastructure/db/migration/runner.go
+  h_e1f1392360ad67 43-44
+internal/logic/conversation/list_messages.go
+  h_e1f1392360ad67 1-73
+internal/models/message.go
+  h_e1f1392360ad67 10-12,18-40,46,52
+internal/models/message_feedback.go
+  h_e1f1392360ad67 1-31
+internal/repository/message_feedback.go
+  h_e1f1392360ad67 1-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "1feda0fb4cab60ddccac11d4b4ede050015a983b",
+  "prompts": {},
+  "humans": {
+    "h_e1f1392360ad67": {
+      "author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

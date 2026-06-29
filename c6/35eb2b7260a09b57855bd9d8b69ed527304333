@@ -1,0 +1,64 @@
+internal/repository/postgres/agent_persona.go
+  h_e1f1392360ad67 19-20,107-134
+internal/svc/context_test.go
+  s_d5520a108cc9cc::t_73287927ca2c24 6,11-12,15-16,18-20,108-180,199-231
+internal/repository/agent_persona.go
+  h_e1f1392360ad67 18-19
+internal/logic/agentpersona/list_agent_personas.go
+  h_e1f1392360ad67 1-76
+internal/logic/agentpersona/helper.go
+  h_e1f1392360ad67 1-18
+internal/transport/http/routes/agentpersona.go
+  h_e1f1392360ad67 1-44
+internal/transport/http/request/agent.go
+  h_e1f1392360ad67 24-46
+internal/logic/agentpersona/update_agent_persona.go
+  h_e1f1392360ad67 1-74
+internal/svc/context.go
+  s_d5520a108cc9cc::t_7088723e078032 149,151-161
+  s_d5520a108cc9cc::t_f3e7c11a39506b 85,138-148
+  s_d5520a108cc9cc::t_3b195addddbabc 150
+CLAUDE.md
+  s_d5520a108cc9cc::t_dc387345eed5bd 4
+internal/config/config.go
+  h_e1f1392360ad67 26,102-105,161-163
+internal/mapper/agent.go
+  h_e1f1392360ad67 27-38
+AGENTS.md
+  s_d5520a108cc9cc::t_dc387345eed5bd 4
+internal/models/agent_persona.go
+  h_e1f1392360ad67 15-30
+internal/transport/http/router.go
+  h_e1f1392360ad67 39,50
+internal/logic/agentpersona/activate_agent_persona.go
+  h_e1f1392360ad67 1-58
+configs/config.yml.example
+  h_e1f1392360ad67 62-64
+internal/transport/http/handler/agentpersona.go
+  h_e1f1392360ad67 1-57
+internal/logic/agentpersona/delete_agent_persona.go
+  h_e1f1392360ad67 1-42
+internal/logic/agentpersona/create_agent_persona.go
+  h_e1f1392360ad67 1-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "c635eb2b7260a09b57855bd9d8b69ed527304333",
+  "prompts": {},
+  "humans": {
+    "h_e1f1392360ad67": {
+      "author": "chenyang <904852749@qq.com>"
+    }
+  },
+  "sessions": {
+    "s_d5520a108cc9cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0892-f010-7a52-bb80-be2f10228cc9",
+        "model": "gpt-5.5"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

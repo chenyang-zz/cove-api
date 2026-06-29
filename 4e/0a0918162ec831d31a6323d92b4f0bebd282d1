@@ -1,0 +1,18 @@
+internal/models/skill.go
+  h_e1f1392360ad67 1-36
+internal/models/knowledge_base.go
+  h_e1f1392360ad67 1-37
+internal/models/mcp_server.go
+  h_e1f1392360ad67 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "4e0a0918162ec831d31a6323d92b4f0bebd282d1",
+  "prompts": {},
+  "humans": {
+    "h_e1f1392360ad67": {
+      "author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

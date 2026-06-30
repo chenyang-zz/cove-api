@@ -36,6 +36,12 @@ func encryptMCPAuthConfig(cipher interface {
 	if input.Header != "" {
 		out["header"] = input.Header
 	}
+	if input.Placement != "" {
+		out["placement"] = input.Placement
+	}
+	if input.QueryParam != "" {
+		out["query_param"] = input.QueryParam
+	}
 	if input.Key != "" {
 		encrypted, err := cipher.Encrypt(input.Key)
 		if err != nil {
@@ -62,6 +68,12 @@ func decryptMCPAuthConfig(cipher interface {
 	}
 	if header := input["header"]; header != "" {
 		out["header"] = header
+	}
+	if placement := input["placement"]; placement != "" {
+		out["placement"] = placement
+	}
+	if queryParam := input["query_param"]; queryParam != "" {
+		out["query_param"] = queryParam
 	}
 	if key := input["key"]; key != "" {
 		plain, err := cipher.Decrypt(key)

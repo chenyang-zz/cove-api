@@ -48,13 +48,20 @@ func TestMCPServerToCoreServerConfigMapsConnectionFields(t *testing.T) {
 		},
 	}
 
-	got := mapper.MCPServerToCoreServerConfig(row, models.MCPAuthConfig{"token": "plain-token"})
+	got := mapper.MCPServerToCoreServerConfig(row, models.MCPAuthConfig{
+		"token":       "plain-token",
+		"placement":   "query",
+		"query_param": "key",
+	})
 
 	if got.ID != serverID || got.Transport != "sse" || got.URL != "https://example.com/mcp" || got.AuthType != "bearer" {
 		t.Fatalf("core config connection fields = %#v", got)
 	}
 	if got.AuthConfig["token"] != "plain-token" {
 		t.Fatalf("AuthConfig[token] = %q, want plain-token", got.AuthConfig["token"])
+	}
+	if got.AuthConfig["placement"] != "query" || got.AuthConfig["query_param"] != "key" {
+		t.Fatalf("AuthConfig = %#v, want query placement fields", got.AuthConfig)
 	}
 	if len(got.ToolsCache) != 0 {
 		t.Fatalf("ToolsCache = %#v, want empty display cache", got.ToolsCache)

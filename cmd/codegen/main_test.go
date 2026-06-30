@@ -1656,8 +1656,8 @@ type MCPServer struct {
 		t.Fatalf("repository file missing MCPServerRepository:\n%s", repoFile)
 	}
 	for _, path := range []string{
-		"internal/repository/mcp_server.go",
-		"internal/repository/postgres/mcp_server.go",
+		"internal/repository/m_c_p_server.go",
+		"internal/repository/postgres/m_c_p_server.go",
 	} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(path))); err == nil {
 			t.Fatalf("generated old acronym-split repository file %s", path)

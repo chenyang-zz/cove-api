@@ -22,9 +22,11 @@ const (
 )
 
 type MCPAuthConfig struct {
-	Token  string `json:"token" binding:"omitempty"`
-	Header string `json:"header" binding:"omitempty"`
-	Key    string `json:"key" binding:"omitempty"`
+	Token      string `json:"token" binding:"omitempty"`
+	Header     string `json:"header" binding:"omitempty"`
+	Key        string `json:"key" binding:"omitempty"`
+	Placement  string `json:"placement" binding:"omitempty,oneof=header query"`
+	QueryParam string `json:"query_param" binding:"omitempty"`
 }
 
 type CreateMCPServerRequest struct {

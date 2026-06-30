@@ -210,6 +210,49 @@ func TestCreateMCPServerEncryptsAPIKeyAndKeepsHeaderPlain(t *testing.T) {
 	}
 }
 
+func TestCreateMCPServerStoresAPIKeyQueryPlacement(t *testing.T) {
+	// 验证 URL query API key 配置中只有 key 加密，placement/query_param 会明文存储用于同步时拼接 URL。
+	ctx := context.Background()
+	cipher := newTestCipher(t)
+	userID := uuid.New()
+	repo := newFakeMCPServerRepository()
+	logic := NewCreateMCPServerLogic(ctx, &svc.ServiceContext{
+		MCPServerRepo: repo,
+		SecretCipher:  cipher,
+	})
+
+	out, err := logic.CreateMCPServer(userID, &request.CreateMCPServerRequest{
+		Name:      "amap",
+		Transport: request.StreamableHTTP,
+		Url:       "https://mcp.amap.com/mcp",
+		AuthType:  request.ApiKey,
+		AuthConfig: &request.MCPAuthConfig{
+			Placement:  "query",
+			QueryParam: "key",
+			Key:        "plain-key",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateMCPServer error = %v", err)
+	}
+	if repo.created.AuthConfig["placement"] != "query" || repo.created.AuthConfig["query_param"] != "key" {
+		t.Fatalf("stored auth config = %#v, want query placement fields", repo.created.AuthConfig)
+	}
+	if repo.created.AuthConfig["key"] == "" || repo.created.AuthConfig["key"] == "plain-key" {
+		t.Fatalf("stored key = %q, want encrypted value", repo.created.AuthConfig["key"])
+	}
+	plain, err := cipher.Decrypt(repo.created.AuthConfig["key"])
+	if err != nil {
+		t.Fatalf("Decrypt stored key error = %v", err)
+	}
+	if plain != "plain-key" {
+		t.Fatalf("decrypted key = %q, want plain-key", plain)
+	}
+	if out.AuthMasked != "*****-key" {
+		t.Fatalf("AuthMasked = %q, want masked plain key", out.AuthMasked)
+	}
+}
+
 func TestGetMCPServerListUsesAuthenticatedUserAndDecryptsAuthMask(t *testing.T) {
 	userID := uuid.New()
 	otherUserID := uuid.New()
@@ -374,6 +417,51 @@ func TestUpdateMCPServerPreservesFalseAndConvertsAuthConfig(t *testing.T) {
 	}
 	if out.Enabled {
 		t.Fatal("response Enabled = true, want false")
+	}
+}
+
+func TestUpdateMCPServerStoresAPIKeyQueryPlacement(t *testing.T) {
+	// 验证更新 MCP 认证配置时，query placement 字段明文保存，key 字段加密保存。
+	userID := uuid.New()
+	mcpID := uuid.New()
+	cipher := newTestCipher(t)
+	repo := newFakeMCPServerRepository(&models.MCPServer{
+		ID:       mcpID,
+		UserID:   userID,
+		Name:     "amap",
+		AuthType: string(request.ApiKey),
+	})
+	logic := NewUpdateMCPServerLogic(context.Background(), &svc.ServiceContext{
+		MCPServerRepo: repo,
+		SecretCipher:  cipher,
+	})
+
+	_, err := logic.UpdateMCPServer(userID, &request.UpdateMCPServerRequest{
+		UriMCPServerIDRequest: request.UriMCPServerIDRequest{ID: mcpID.String()},
+		AuthConfig: &request.MCPAuthConfig{
+			Placement:  "query",
+			QueryParam: "key",
+			Key:        "plain-key",
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateMCPServer error = %v", err)
+	}
+	if !reflect.DeepEqual(repo.fields, []string{"auth_config"}) {
+		t.Fatalf("fields = %v, want auth_config", repo.fields)
+	}
+	if repo.partial.AuthConfig["placement"] != "query" || repo.partial.AuthConfig["query_param"] != "key" {
+		t.Fatalf("patch auth config = %#v, want query placement fields", repo.partial.AuthConfig)
+	}
+	if got := repo.partial.AuthConfig["key"]; got == "" || got == "plain-key" {
+		t.Fatalf("patch auth key = %q, want encrypted value", got)
+	}
+	plain, err := cipher.Decrypt(repo.partial.AuthConfig["key"])
+	if err != nil {
+		t.Fatalf("Decrypt patch key error = %v", err)
+	}
+	if plain != "plain-key" {
+		t.Fatalf("decrypted patch key = %q, want plain-key", plain)
 	}
 }
 
@@ -593,6 +681,48 @@ func TestSyncMCPServerUpdatesToolsAndClearsLastError(t *testing.T) {
 	}
 	if client.lastServer.AuthConfig["token"] != "sync-token" {
 		t.Fatalf("client token = %q, want decrypted token", client.lastServer.AuthConfig["token"])
+	}
+}
+
+func TestSyncMCPServerPassesDecryptedAPIKeyQueryConfig(t *testing.T) {
+	// 验证同步前会解密 API key，并把 query placement 配置传给 core service。
+	userID := uuid.New()
+	mcpID := uuid.New()
+	cipher := newTestCipher(t)
+	encryptedKey, err := cipher.Encrypt("sync-key")
+	if err != nil {
+		t.Fatalf("Encrypt key error = %v", err)
+	}
+	repo := newFakeMCPServerRepository(&models.MCPServer{
+		ID:        mcpID,
+		UserID:    userID,
+		Name:      "amap",
+		Transport: string(request.StreamableHTTP),
+		Url:       "https://mcp.amap.com/mcp",
+		AuthType:  string(request.ApiKey),
+		AuthConfig: models.MCPAuthConfig{
+			"placement":   "query",
+			"query_param": "key",
+			"key":         encryptedKey,
+		},
+		UpdatedAt: time.Now(),
+	})
+	client := &recordingMCPToolClient{tools: []coremcp.ToolInfo{{Name: "maps", Description: "maps"}}}
+	logic := NewSyncMCPServerLogic(context.Background(), &svc.ServiceContext{
+		MCPServerRepo:  repo,
+		SecretCipher:   cipher,
+		MCPToolService: coremcp.NewService(coremcp.Options{Client: client}),
+	})
+
+	_, err = logic.SyncMCPServer(userID, &request.UriMCPServerIDRequest{ID: mcpID.String()})
+	if err != nil {
+		t.Fatalf("SyncMCPServer error = %v", err)
+	}
+	if client.lastServer.AuthConfig["placement"] != "query" || client.lastServer.AuthConfig["query_param"] != "key" {
+		t.Fatalf("core auth config = %#v, want query placement fields", client.lastServer.AuthConfig)
+	}
+	if client.lastServer.AuthConfig["key"] != "sync-key" {
+		t.Fatalf("core auth key = %q, want decrypted sync-key", client.lastServer.AuthConfig["key"])
 	}
 }
 

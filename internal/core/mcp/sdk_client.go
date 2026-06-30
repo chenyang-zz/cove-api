@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -24,7 +26,7 @@ func (c *SDKToolClient) ListTools(ctx context.Context, server ServerConfig) ([]T
 	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "boxify-api-go", Version: "0.1.0"}, nil)
 	session, err := client.Connect(ctx, transport, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("连接mcp服务器失败 %v", err)
 	}
 	defer session.Close()
 
@@ -52,11 +54,15 @@ func (c *SDKToolClient) ListTools(ctx context.Context, server ServerConfig) ([]T
 
 func (c *SDKToolClient) transport(server ServerConfig) (sdkmcp.Transport, error) {
 	httpClient := c.authHTTPClient(server)
+	endpoint, err := authEndpointURL(server)
+	if err != nil {
+		return nil, err
+	}
 	switch server.Transport {
 	case TransportSSE:
-		return &sdkmcp.SSEClientTransport{Endpoint: server.URL, HTTPClient: httpClient}, nil
+		return &sdkmcp.SSEClientTransport{Endpoint: endpoint, HTTPClient: httpClient}, nil
 	case "", TransportStreamableHTTP:
-		return &sdkmcp.StreamableClientTransport{Endpoint: server.URL, HTTPClient: httpClient}, nil
+		return &sdkmcp.StreamableClientTransport{Endpoint: endpoint, HTTPClient: httpClient}, nil
 	default:
 		return nil, fmt.Errorf("unsupported MCP transport %q", server.Transport)
 	}
@@ -74,7 +80,7 @@ func (c *SDKToolClient) authHTTPClient(server ServerConfig) *http.Client {
 			headers["Authorization"] = "Bearer " + token
 		}
 	case AuthAPIKey:
-		if key := server.AuthConfig["key"]; key != "" {
+		if key := server.AuthConfig["key"]; key != "" && apiKeyPlacement(server) != "query" {
 			header := server.AuthConfig["header"]
 			if header == "" {
 				header = "X-Api-Key"
@@ -91,6 +97,32 @@ func (c *SDKToolClient) authHTTPClient(server ServerConfig) *http.Client {
 		headers: headers,
 	}
 	return &clone
+}
+
+func authEndpointURL(server ServerConfig) (string, error) {
+	if server.AuthType != AuthAPIKey || apiKeyPlacement(server) != "query" || server.AuthConfig["key"] == "" {
+		return server.URL, nil
+	}
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		return "", fmt.Errorf("invalid MCP endpoint URL %q: %w", server.URL, err)
+	}
+	queryParam := server.AuthConfig["query_param"]
+	if queryParam == "" {
+		queryParam = "key"
+	}
+	values := parsed.Query()
+	values.Set(queryParam, server.AuthConfig["key"])
+	parsed.RawQuery = values.Encode()
+	return parsed.String(), nil
+}
+
+func apiKeyPlacement(server ServerConfig) string {
+	placement := strings.ToLower(server.AuthConfig["placement"])
+	if placement == "" {
+		return "header"
+	}
+	return placement
 }
 
 type headerRoundTripper struct {

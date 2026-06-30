@@ -9,3 +9,10 @@ package response
 type ListResponse[T any] struct {
 	List []T `json:"list"`
 }
+
+type PageListResponse[T any] struct {
+	Total    int64 `json:"total"`
+	Page     int64 `json:"page"`
+	PageSize int64 `json:"page_size"`
+	List     []T   `json:"list"`
+}

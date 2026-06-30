@@ -39,6 +39,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	agentPersona := handler.NewAgentPersonaHandler(deps.Svc)
 	mcpServer := handler.NewMCPServerHandler(deps.Svc)
 	knowledgeBase := handler.NewKnowledgeBaseHandler(deps.Svc)
+	document := handler.NewDocumentHandler(deps.Svc)
 
 	authMiddleware := middleware.Auth(deps.Svc.TokenIssuer)
 
@@ -52,6 +53,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	routes.RegisterAgentPersonaRoutes(api, agentPersona, authMiddleware)
 	routes.RegisterMCPServerRoutes(api, mcpServer, authMiddleware)
 	routes.RegisterKnowledgeBaseRoutes(api, knowledgeBase, authMiddleware)
+	routes.RegisterDocumentRoutes(api, document, authMiddleware)
 	if deps.EnableDebugPanicRoute {
 		routes.RegisterDebugRoutes(api)
 	}

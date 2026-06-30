@@ -65,3 +65,18 @@ func (m *MCPServer) BeforeCreate(tx *gorm.DB) error {
 	ensureUUID(&m.ID)
 	return nil
 }
+
+func (d *Document) BeforeCreate(tx *gorm.DB) error {
+	ensureUUID(&d.ID)
+	return nil
+}
+
+func (i *Image) BeforeCreate(tx *gorm.DB) error {
+	ensureUUID(&i.ID)
+	return nil
+}
+
+func (t *Tag) BeforeCreate(tx *gorm.DB) error {
+	ensureUUID(&t.ID)
+	return nil
+}

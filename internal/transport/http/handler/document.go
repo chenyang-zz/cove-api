@@ -43,7 +43,12 @@ func (h DocumentHandler) ImportDocumentFromUrl(c *gin.Context) {
 		response.FromError(c, xerr.Validation(err))
 		return
 	}
-	out, err := documentlogic.NewImportDocumentFromUrlLogic(c.Request.Context(), h.svc).ImportDocumentFromUrl(&body)
+	userID, err := util.UserIDFromContext(c.Request.Context())
+	if err != nil {
+		response.FromError(c, err)
+		return
+	}
+	out, err := documentlogic.NewImportDocumentFromUrlLogic(c.Request.Context(), h.svc).ImportDocumentFromUrl(userID, &body)
 	if err != nil {
 		response.FromError(c, err)
 		return
@@ -80,7 +85,12 @@ func (h DocumentHandler) GetDocument(c *gin.Context) {
 		response.FromError(c, xerr.Validation(err))
 		return
 	}
-	out, err := documentlogic.NewGetDocumentLogic(c.Request.Context(), h.svc).GetDocument(&query)
+	userID, err := util.UserIDFromContext(c.Request.Context())
+	if err != nil {
+		response.FromError(c, err)
+		return
+	}
+	out, err := documentlogic.NewGetDocumentLogic(c.Request.Context(), h.svc).GetDocument(userID, &query)
 	if err != nil {
 		response.FromError(c, err)
 		return
@@ -140,7 +150,12 @@ func (h DocumentHandler) ReParseDocument(c *gin.Context) {
 		response.FromError(c, xerr.Validation(err))
 		return
 	}
-	out, err := documentlogic.NewReParseDocumentLogic(c.Request.Context(), h.svc).ReParseDocument(&body)
+	userID, err := util.UserIDFromContext(c.Request.Context())
+	if err != nil {
+		response.FromError(c, err)
+		return
+	}
+	out, err := documentlogic.NewReParseDocumentLogic(c.Request.Context(), h.svc).ReParseDocument(userID, &body)
 	if err != nil {
 		response.FromError(c, err)
 		return
@@ -167,11 +182,7 @@ func (h DocumentHandler) DeleteDocument(c *gin.Context) {
 }
 
 func (h DocumentHandler) SearchDocuments(c *gin.Context) {
-	var body response.ListResponse[*response.SearchDocumentResponse]
-	if err := c.ShouldBindUri(&body); err != nil {
-		response.FromError(c, xerr.Validation(err))
-		return
-	}
+	var body request.SearchDocumentsRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		response.FromError(c, xerr.Validation(err))
 		return
@@ -181,11 +192,12 @@ func (h DocumentHandler) SearchDocuments(c *gin.Context) {
 		response.FromError(c, err)
 		return
 	}
-	if err := documentlogic.NewSearchDocumentsLogic(c.Request.Context(), h.svc).SearchDocuments(userID, &body); err != nil {
+	out, err := documentlogic.NewSearchDocumentsLogic(c.Request.Context(), h.svc).SearchDocuments(userID, &body)
+	if err != nil {
 		response.FromError(c, err)
 		return
 	}
-	response.OK(c, nil)
+	response.OK(c, out)
 }
 
 func (h DocumentHandler) MoveDocument(c *gin.Context) {
@@ -194,7 +206,7 @@ func (h DocumentHandler) MoveDocument(c *gin.Context) {
 		response.FromError(c, xerr.Validation(err))
 		return
 	}
-	if err := c.ShouldBindQuery(&query); err != nil {
+	if err := c.ShouldBindJSON(&query); err != nil {
 		response.FromError(c, xerr.Validation(err))
 		return
 	}

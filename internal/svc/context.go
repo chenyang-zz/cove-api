@@ -51,6 +51,8 @@ type ServiceContext struct {
 	MCPServerRepo       repository.MCPServerRepository
 	KnowledgeBaseRepo   repository.KnowledgeBaseRepository
 	DocumentRepo        repository.DocumentRepository
+	ImageRepo           repository.ImageRepository
+	TagRepo             repository.TagRepository
 
 	SecretCipher *security.SecretCipher
 	TokenIssuer  *security.TokenIssuer
@@ -155,6 +157,8 @@ func bindPostgresRepositories(s *ServiceContext, db *gorm.DB) {
 	s.MCPServerRepo = repositorypostgres.NewMCPServerRepository(db)
 	s.KnowledgeBaseRepo = repositorypostgres.NewKnowledgeBaseRepository(db)
 	s.DocumentRepo = repositorypostgres.NewDocumentRepository(db)
+	s.ImageRepo = repositorypostgres.NewImageRepository(db)
+	s.TagRepo = repositorypostgres.NewTagRepository(db)
 }
 
 func (s *ServiceContext) WithTx(ctx context.Context, fn func(txSvc *ServiceContext) error) error {

@@ -20,7 +20,7 @@ func RegisterDocumentRoutes(api *gin.RouterGroup, document handler.DocumentHandl
 	// @output response.DocumentResponse
 	documentGroup.POST("/upload", document.UploadDocument)
 
-	// auth(user_id)
+	// @auth(user_id)
 	// @description 从url导入文档
 	// @input request.URLImportRequest
 	// @output response.DocumentResponse
@@ -29,11 +29,11 @@ func RegisterDocumentRoutes(api *gin.RouterGroup, document handler.DocumentHandl
 	// @auth(user_id)
 	// @description 获取文档列表
 	// @input request.ListDocumentsRequest
-	// @output response.ListResponse[*response.DocuementResponse]
+	// @output response.PageListResponse[*response.DocumentResponse]
 	documentGroup.GET("/", document.ListDocuments)
 	documentGroup.GET("/list", document.ListDocuments)
 
-	// auth(user_id)
+	// @auth(user_id)
 	// @description 获取文档详情
 	// @input request.UriDocumentIDRequest
 	// @output response.DocumentResponse
@@ -51,7 +51,7 @@ func RegisterDocumentRoutes(api *gin.RouterGroup, document handler.DocumentHandl
 	// @output response.DocumentStatusResponse
 	documentGroup.GET("/:doc_id/status", document.GetDocumentStatus)
 
-	// auth(user_id)
+	// @auth(user_id)
 	// @description 重新提交文档解析
 	// @input request.UriDocumentIDRequest
 	// @output response.DocumentResponse
@@ -65,12 +65,12 @@ func RegisterDocumentRoutes(api *gin.RouterGroup, document handler.DocumentHandl
 
 	// @auth(user_id)
 	// @description 检索文档
-	// @input response.ListResponse[*response.SearchDocumentResponse]
+	// @input request.SearchDocumentsRequest
 	documentGroup.POST("/:doc_id/search", document.SearchDocuments)
 
 	// @auth(user_id)
 	// @description 移动文档到指定知识库
 	// @input request.MoveDocumentRequest
 	// @output response.DocumentResponse
-	documentGroup.GET("/:doc_id/move", document.MoveDocument)
+	documentGroup.POST("/:doc_id/move", document.MoveDocument)
 }

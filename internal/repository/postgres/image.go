@@ -42,6 +42,30 @@ func (r *ImageRepository) List(ctx context.Context, userID uuid.UUID) ([]*models
 	return rows, nil
 }
 
+func (r *ImageRepository) CountByKnowledgeBase(ctx context.Context, userID uuid.UUID, kbIDs []uuid.UUID) (map[uuid.UUID]int64, error) {
+	out := map[uuid.UUID]int64{}
+	if len(kbIDs) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		KBID  uuid.UUID `gorm:"column:kb_id"`
+		Count int64     `gorm:"column:item_count"`
+	}
+	err := r.db.WithContext(ctx).
+		Model(&models.Image{}).
+		Select("kb_id, COUNT(*) AS item_count").
+		Where("user_id = ? AND kb_id IN ?", userID, kbIDs).
+		Group("kb_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, xerr.Wrapf(err, "统计知识库图片数量失败")
+	}
+	for _, row := range rows {
+		out[row.KBID] = row.Count
+	}
+	return out, nil
+}
+
 func (r *ImageRepository) FindByID(ctx context.Context, userID uuid.UUID, imageID uuid.UUID) (*models.Image, error) {
 	image := &models.Image{}
 	err := r.db.WithContext(ctx).

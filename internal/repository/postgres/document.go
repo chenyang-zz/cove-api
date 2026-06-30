@@ -5,6 +5,8 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strings"
+
 	"github.com/boxify/api-go/internal/models"
 	"github.com/boxify/api-go/internal/repository"
 	"github.com/boxify/api-go/internal/xerr"
@@ -30,7 +32,6 @@ func (r *DocumentRepository) Create(ctx context.Context, userID uuid.UUID, docum
 
 func (r *DocumentRepository) List(ctx context.Context, userID uuid.UUID) ([]*models.Document, error) {
 	var rows []*models.Document
-
 	err := r.db.WithContext(ctx).
 		Where("user_id = ?", userID).
 		Order("updated_at DESC").
@@ -38,13 +39,76 @@ func (r *DocumentRepository) List(ctx context.Context, userID uuid.UUID) ([]*mod
 	if err != nil {
 		return nil, xerr.Wrapf(err, "查询文档元数据列表失败")
 	}
-
 	return rows, nil
+}
+
+func (r *DocumentRepository) PageList(ctx context.Context, userID uuid.UUID, query repository.DocumentListQuery) ([]*models.Document, int64, error) {
+	var rows []*models.Document
+	db := r.db.WithContext(ctx).
+		Model(&models.Document{}).
+		Where("documents.user_id = ?", userID)
+	if query.KBID != nil {
+		db = db.Where("documents.kb_id = ?", *query.KBID)
+	}
+	if query.Tag != nil && strings.TrimSpace(*query.Tag) != "" {
+		tag := strings.TrimSpace(*query.Tag)
+		db = db.Where(`EXISTS (
+			SELECT 1
+			FROM document_tags dt
+			JOIN tags t ON t.id = dt.tag_id
+			WHERE dt.document_id = documents.id
+			  AND t.user_id = documents.user_id
+			  AND t.name = ?
+		)`, tag)
+	}
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, xerr.Wrapf(err, "统计文档元数据列表失败")
+	}
+
+	limit, offset := query.LimitOffset(20)
+	err := db.
+		Preload("Tags", "tags.user_id = ?", userID).
+		Order("updated_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&rows).Error
+	if err != nil {
+		return nil, 0, xerr.Wrapf(err, "查询文档元数据列表失败")
+	}
+
+	return rows, total, nil
+}
+
+func (r *DocumentRepository) CountByKnowledgeBase(ctx context.Context, userID uuid.UUID, kbIDs []uuid.UUID) (map[uuid.UUID]int64, error) {
+	out := map[uuid.UUID]int64{}
+	if len(kbIDs) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		KBID  uuid.UUID `gorm:"column:kb_id"`
+		Count int64     `gorm:"column:item_count"`
+	}
+	err := r.db.WithContext(ctx).
+		Model(&models.Document{}).
+		Select("kb_id, COUNT(*) AS item_count").
+		Where("user_id = ? AND kb_id IN ?", userID, kbIDs).
+		Group("kb_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, xerr.Wrapf(err, "统计知识库文档数量失败")
+	}
+	for _, row := range rows {
+		out[row.KBID] = row.Count
+	}
+	return out, nil
 }
 
 func (r *DocumentRepository) FindByID(ctx context.Context, userID uuid.UUID, documentID uuid.UUID) (*models.Document, error) {
 	document := &models.Document{}
 	err := r.db.WithContext(ctx).
+		Preload("Tags", "tags.user_id = ?", userID).
 		Where("id = ? AND user_id = ?", documentID, userID).
 		First(document).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {

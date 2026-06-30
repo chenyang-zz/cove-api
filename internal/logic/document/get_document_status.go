@@ -28,6 +28,17 @@ func NewGetDocumentStatusLogic(ctx context.Context, svcCtx *svc.ServiceContext) 
 
 // GetDocumentStatus 获取文档状态
 func (l *GetDocumentStatusLogic) GetDocumentStatus(userID uuid.UUID, input *request.UriDocumentIDRequest) (*response.DocumentStatusResponse, error) {
-	_ = l
-	return nil, nil
+	documentID, err := parseDocumentID(input.DocumentID)
+	if err != nil {
+		return nil, err
+	}
+	row, err := l.svcCtx.DocumentRepo.FindByID(l.ctx, userID, documentID)
+	if err != nil {
+		return nil, err
+	}
+	return &response.DocumentStatusResponse{
+		Status:   row.Status,
+		Progress: row.Progress,
+		ErrorMsg: row.ErrorMsg,
+	}, nil
 }

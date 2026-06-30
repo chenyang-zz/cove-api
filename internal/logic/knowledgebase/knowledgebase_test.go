@@ -14,12 +14,111 @@ import (
 )
 
 type fakeKnowledgeBaseRepository struct {
-	rows      map[uuid.UUID]*models.KnowledgeBase
-	created   *models.KnowledgeBase
-	deletedID uuid.UUID
-	partial   *models.KnowledgeBase
-	fields    []string
-	updateID  uuid.UUID
+	rows              map[uuid.UUID]*models.KnowledgeBase
+	created           *models.KnowledgeBase
+	deletedID         uuid.UUID
+	partial           *models.KnowledgeBase
+	fields            []string
+	updateID          uuid.UUID
+	findDefaultCalled bool
+}
+
+type fakeKnowledgeBaseDocumentRepository struct {
+	rows []*models.Document
+}
+
+func (r *fakeKnowledgeBaseDocumentRepository) Create(ctx context.Context, userID uuid.UUID, row *models.Document) (*models.Document, error) {
+	row.UserID = userID
+	r.rows = append(r.rows, row)
+	return row, nil
+}
+
+func (r *fakeKnowledgeBaseDocumentRepository) List(ctx context.Context, userID uuid.UUID) ([]*models.Document, error) {
+	return nil, nil
+}
+
+func (r *fakeKnowledgeBaseDocumentRepository) PageList(ctx context.Context, userID uuid.UUID, query repository.DocumentListQuery) ([]*models.Document, int64, error) {
+	return nil, 0, nil
+}
+
+func (r *fakeKnowledgeBaseDocumentRepository) CountByKnowledgeBase(ctx context.Context, userID uuid.UUID, kbIDs []uuid.UUID) (map[uuid.UUID]int64, error) {
+	allowed := map[uuid.UUID]struct{}{}
+	for _, id := range kbIDs {
+		allowed[id] = struct{}{}
+	}
+	out := map[uuid.UUID]int64{}
+	for _, row := range r.rows {
+		if row.UserID != userID || row.KBID == nil {
+			continue
+		}
+		if _, ok := allowed[*row.KBID]; ok {
+			out[*row.KBID]++
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeKnowledgeBaseDocumentRepository) FindByID(ctx context.Context, userID uuid.UUID, documentID uuid.UUID) (*models.Document, error) {
+	return nil, xerr.NotFound("文档不存在")
+}
+
+func (r *fakeKnowledgeBaseDocumentRepository) Update(ctx context.Context, userID uuid.UUID, row *models.Document) (*models.Document, error) {
+	return row, nil
+}
+
+func (r *fakeKnowledgeBaseDocumentRepository) UpdateFields(ctx context.Context, userID uuid.UUID, documentID uuid.UUID, row *models.Document, fields *repository.DocumentUpdateFields) (*models.Document, error) {
+	return row, nil
+}
+
+func (r *fakeKnowledgeBaseDocumentRepository) Delete(ctx context.Context, userID uuid.UUID, documentID uuid.UUID) error {
+	return nil
+}
+
+type fakeKnowledgeBaseImageRepository struct {
+	rows []*models.Image
+}
+
+func (r *fakeKnowledgeBaseImageRepository) Create(ctx context.Context, userID uuid.UUID, row *models.Image) (*models.Image, error) {
+	row.UserID = userID
+	r.rows = append(r.rows, row)
+	return row, nil
+}
+
+func (r *fakeKnowledgeBaseImageRepository) List(ctx context.Context, userID uuid.UUID) ([]*models.Image, error) {
+	return nil, nil
+}
+
+func (r *fakeKnowledgeBaseImageRepository) CountByKnowledgeBase(ctx context.Context, userID uuid.UUID, kbIDs []uuid.UUID) (map[uuid.UUID]int64, error) {
+	allowed := map[uuid.UUID]struct{}{}
+	for _, id := range kbIDs {
+		allowed[id] = struct{}{}
+	}
+	out := map[uuid.UUID]int64{}
+	for _, row := range r.rows {
+		if row.UserID != userID || row.KBID == nil {
+			continue
+		}
+		if _, ok := allowed[*row.KBID]; ok {
+			out[*row.KBID]++
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeKnowledgeBaseImageRepository) FindByID(ctx context.Context, userID uuid.UUID, imageID uuid.UUID) (*models.Image, error) {
+	return nil, xerr.NotFound("图片不存在")
+}
+
+func (r *fakeKnowledgeBaseImageRepository) Update(ctx context.Context, userID uuid.UUID, row *models.Image) (*models.Image, error) {
+	return row, nil
+}
+
+func (r *fakeKnowledgeBaseImageRepository) UpdateFields(ctx context.Context, userID uuid.UUID, imageID uuid.UUID, row *models.Image, fields *repository.ImageUpdateFields) (*models.Image, error) {
+	return row, nil
+}
+
+func (r *fakeKnowledgeBaseImageRepository) Delete(ctx context.Context, userID uuid.UUID, imageID uuid.UUID) error {
+	return nil
 }
 
 func newFakeKnowledgeBaseRepository(rows ...*models.KnowledgeBase) *fakeKnowledgeBaseRepository {
@@ -56,6 +155,16 @@ func (r *fakeKnowledgeBaseRepository) FindByID(ctx context.Context, userID uuid.
 		return nil, xerr.NotFound("知识库不存在")
 	}
 	return row, nil
+}
+
+func (r *fakeKnowledgeBaseRepository) FindDefault(ctx context.Context, userID uuid.UUID) (*models.KnowledgeBase, error) {
+	r.findDefaultCalled = true
+	for _, row := range r.rows {
+		if row.UserID == userID && row.IsDefault {
+			return row, nil
+		}
+	}
+	return nil, xerr.NotFound("默认知识库不存在")
 }
 
 func (r *fakeKnowledgeBaseRepository) Update(ctx context.Context, userID uuid.UUID, row *models.KnowledgeBase) (*models.KnowledgeBase, error) {
@@ -135,7 +244,7 @@ func TestCreateKnowledgeBasePersistsDisplayFields(t *testing.T) {
 }
 
 func TestGetAndListKnowledgeBaseMapRows(t *testing.T) {
-	// 验证详情和列表接口会按用户隔离读取，并把模型转换为响应结构。
+	// 验证详情和列表接口会按用户隔离读取，并把模型与文档/图片计数转换为响应结构。
 	ctx := context.Background()
 	userID := uuid.New()
 	row := &models.KnowledgeBase{
@@ -148,38 +257,69 @@ func TestGetAndListKnowledgeBaseMapRows(t *testing.T) {
 		IsDefault:   true,
 		ChatEnabled: true,
 	}
-	repo := newFakeKnowledgeBaseRepository(row, &models.KnowledgeBase{ID: uuid.New(), UserID: uuid.New(), Name: "other"})
+	projectRow := &models.KnowledgeBase{ID: uuid.New(), UserID: userID, Name: "项目库"}
+	otherUserID := uuid.New()
+	otherKBID := uuid.New()
+	repo := newFakeKnowledgeBaseRepository(row, projectRow, &models.KnowledgeBase{ID: otherKBID, UserID: otherUserID, Name: "other"})
+	docRepo := &fakeKnowledgeBaseDocumentRepository{rows: []*models.Document{
+		{ID: uuid.New(), UserID: userID, KBID: &row.ID},
+		{ID: uuid.New(), UserID: userID, KBID: &row.ID},
+		{ID: uuid.New(), UserID: userID, KBID: &projectRow.ID},
+		{ID: uuid.New(), UserID: userID},
+		{ID: uuid.New(), UserID: otherUserID, KBID: &row.ID},
+	}}
+	imageRepo := &fakeKnowledgeBaseImageRepository{rows: []*models.Image{
+		{ID: uuid.New(), UserID: userID, KBID: &row.ID},
+		{ID: uuid.New(), UserID: userID, KBID: &projectRow.ID},
+		{ID: uuid.New(), UserID: userID, KBID: &projectRow.ID},
+		{ID: uuid.New(), UserID: otherUserID, KBID: &row.ID},
+	}}
+	svcCtx := &svc.ServiceContext{KnowledgeBaseRepo: repo, DocumentRepo: docRepo, ImageRepo: imageRepo}
 
-	got, err := NewGetKnowledgeBaseLogic(ctx, &svc.ServiceContext{KnowledgeBaseRepo: repo}).GetKnowledgeBase(userID, &request.UriKnowledgeBaseIDRequest{KID: row.ID.String()})
+	got, err := NewGetKnowledgeBaseLogic(ctx, svcCtx).GetKnowledgeBase(userID, &request.UriKnowledgeBaseIDRequest{KID: row.ID.String()})
 	if err != nil {
 		t.Fatalf("GetKnowledgeBase error = %v", err)
 	}
-	if got.ID != row.ID || got.Name != "默认库" || got.Color != "#0ea5e9" || !got.IsDefault || !got.ChatEnabled {
+	if got.ID != row.ID || got.Name != "默认库" || got.Color != "#0ea5e9" || !got.IsDefault || !got.ChatEnabled || got.DocCount != 2 || got.ImageCount != 1 {
 		t.Fatalf("detail response = %+v, want mapped row", got)
 	}
 
-	list, err := NewGetKnowledgeBaseListLogic(ctx, &svc.ServiceContext{KnowledgeBaseRepo: repo}).GetKnowledgeBaseList(userID)
+	list, err := NewGetKnowledgeBaseListLogic(ctx, svcCtx).GetKnowledgeBaseList(userID)
 	if err != nil {
 		t.Fatalf("GetKnowledgeBaseList error = %v", err)
 	}
-	if len(list.List) != 1 || list.List[0].ID != row.ID {
-		t.Fatalf("list = %+v, want only current user's row", list.List)
+	if len(list.List) != 2 {
+		t.Fatalf("list len = %d, want 2", len(list.List))
+	}
+	countsByID := map[uuid.UUID][2]int64{}
+	for _, item := range list.List {
+		countsByID[item.ID] = [2]int64{item.DocCount, item.ImageCount}
+	}
+	if countsByID[row.ID] != [2]int64{2, 1} || countsByID[projectRow.ID] != [2]int64{1, 2} {
+		t.Fatalf("counts by id = %+v, want default 2/1 and project 1/2", countsByID)
 	}
 }
 
 func TestGetKnowledgeBaseListCreatesDefaultWhenMissing(t *testing.T) {
-	// 验证列表接口在当前用户没有默认知识库时会自动创建默认知识库。
+	// 验证列表接口在当前用户没有默认知识库时会通过默认库查询后自动创建默认知识库。
 	ctx := context.Background()
 	userID := uuid.New()
 	existing := &models.KnowledgeBase{ID: uuid.New(), UserID: userID, Name: "项目资料", Color: "#000000"}
 	repo := newFakeKnowledgeBaseRepository(existing)
 
-	list, err := NewGetKnowledgeBaseListLogic(ctx, &svc.ServiceContext{KnowledgeBaseRepo: repo}).GetKnowledgeBaseList(userID)
+	list, err := NewGetKnowledgeBaseListLogic(ctx, &svc.ServiceContext{
+		KnowledgeBaseRepo: repo,
+		DocumentRepo:      &fakeKnowledgeBaseDocumentRepository{},
+		ImageRepo:         &fakeKnowledgeBaseImageRepository{},
+	}).GetKnowledgeBaseList(userID)
 	if err != nil {
 		t.Fatalf("GetKnowledgeBaseList error = %v", err)
 	}
 	if repo.created == nil {
 		t.Fatal("default knowledge base was not created")
+	}
+	if !repo.findDefaultCalled {
+		t.Fatal("FindDefault was not called before creating default")
 	}
 	if repo.created.UserID != userID || repo.created.Name != "默认知识库" || repo.created.Description != "未分类资料默认归入此库" ||
 		repo.created.Icon != "📚" || repo.created.Color != "#155EEF" || !repo.created.IsDefault || !repo.created.ChatEnabled {
@@ -200,18 +340,25 @@ func TestGetKnowledgeBaseListCreatesDefaultWhenMissing(t *testing.T) {
 }
 
 func TestGetKnowledgeBaseListDoesNotDuplicateDefault(t *testing.T) {
-	// 验证已有默认知识库时列表接口不会重复创建默认库。
+	// 验证已有默认知识库时列表接口通过默认库查询复用已有数据，不会重复创建默认库。
 	ctx := context.Background()
 	userID := uuid.New()
 	defaultRow := &models.KnowledgeBase{ID: uuid.New(), UserID: userID, Name: "默认知识库", IsDefault: true, ChatEnabled: true}
 	repo := newFakeKnowledgeBaseRepository(defaultRow)
 
-	list, err := NewGetKnowledgeBaseListLogic(ctx, &svc.ServiceContext{KnowledgeBaseRepo: repo}).GetKnowledgeBaseList(userID)
+	list, err := NewGetKnowledgeBaseListLogic(ctx, &svc.ServiceContext{
+		KnowledgeBaseRepo: repo,
+		DocumentRepo:      &fakeKnowledgeBaseDocumentRepository{},
+		ImageRepo:         &fakeKnowledgeBaseImageRepository{},
+	}).GetKnowledgeBaseList(userID)
 	if err != nil {
 		t.Fatalf("GetKnowledgeBaseList error = %v", err)
 	}
 	if repo.created != nil {
 		t.Fatalf("created = %+v, want no duplicate default", repo.created)
+	}
+	if !repo.findDefaultCalled {
+		t.Fatal("FindDefault was not called")
 	}
 	if len(list.List) != 1 || list.List[0].ID != defaultRow.ID {
 		t.Fatalf("list = %+v, want existing default only", list.List)
@@ -224,9 +371,16 @@ func TestUpdateKnowledgeBaseSendsOnlyChangedFields(t *testing.T) {
 	userID := uuid.New()
 	row := &models.KnowledgeBase{ID: uuid.New(), UserID: userID, Name: "旧名称", Color: "#000000"}
 	repo := newFakeKnowledgeBaseRepository(row)
+	docRepo := &fakeKnowledgeBaseDocumentRepository{rows: []*models.Document{
+		{ID: uuid.New(), UserID: userID, KBID: &row.ID},
+		{ID: uuid.New(), UserID: userID, KBID: &row.ID},
+	}}
+	imageRepo := &fakeKnowledgeBaseImageRepository{rows: []*models.Image{
+		{ID: uuid.New(), UserID: userID, KBID: &row.ID},
+	}}
 	name := "新名称"
 	color := "#f97316"
-	logic := NewUpdateKnowledgeBaseLogic(ctx, &svc.ServiceContext{KnowledgeBaseRepo: repo})
+	logic := NewUpdateKnowledgeBaseLogic(ctx, &svc.ServiceContext{KnowledgeBaseRepo: repo, DocumentRepo: docRepo, ImageRepo: imageRepo})
 
 	out, err := logic.UpdateKnowledgeBase(userID, &request.UpdateKnowledgeBaseRequest{
 		UriKnowledgeBaseIDRequest: request.UriKnowledgeBaseIDRequest{KID: row.ID.String()},
@@ -245,7 +399,7 @@ func TestUpdateKnowledgeBaseSendsOnlyChangedFields(t *testing.T) {
 	if repo.partial.Name != "新名称" || repo.partial.Color != "#f97316" {
 		t.Fatalf("partial row = %+v, want patched fields", repo.partial)
 	}
-	if out.Name != "新名称" || out.Color != "#f97316" {
+	if out.Name != "新名称" || out.Color != "#f97316" || out.DocCount != 2 || out.ImageCount != 1 {
 		t.Fatalf("response = %+v, want updated fields", out)
 	}
 }
@@ -280,8 +434,15 @@ func TestEnabledChatAcceptsFalse(t *testing.T) {
 	userID := uuid.New()
 	row := &models.KnowledgeBase{ID: uuid.New(), UserID: userID, Name: "资料库", ChatEnabled: true}
 	repo := newFakeKnowledgeBaseRepository(row)
+	docRepo := &fakeKnowledgeBaseDocumentRepository{rows: []*models.Document{
+		{ID: uuid.New(), UserID: userID, KBID: &row.ID},
+	}}
+	imageRepo := &fakeKnowledgeBaseImageRepository{rows: []*models.Image{
+		{ID: uuid.New(), UserID: userID, KBID: &row.ID},
+		{ID: uuid.New(), UserID: userID, KBID: &row.ID},
+	}}
 	disabled := false
-	logic := NewEnabledChatLogic(ctx, &svc.ServiceContext{KnowledgeBaseRepo: repo})
+	logic := NewEnabledChatLogic(ctx, &svc.ServiceContext{KnowledgeBaseRepo: repo, DocumentRepo: docRepo, ImageRepo: imageRepo})
 
 	out, err := logic.EnabledChat(userID, &request.EnabledChatRequest{
 		UriKnowledgeBaseIDRequest: request.UriKnowledgeBaseIDRequest{KID: row.ID.String()},
@@ -296,7 +457,7 @@ func TestEnabledChatAcceptsFalse(t *testing.T) {
 	if row.ChatEnabled {
 		t.Fatal("ChatEnabled remained true, want false")
 	}
-	if out == nil || out.ID != row.ID || out.Name != "资料库" || out.ChatEnabled {
+	if out == nil || out.ID != row.ID || out.Name != "资料库" || out.ChatEnabled || out.DocCount != 1 || out.ImageCount != 2 {
 		t.Fatalf("response = %+v, want updated knowledge base with chat disabled", out)
 	}
 }

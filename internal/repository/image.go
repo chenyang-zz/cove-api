@@ -11,6 +11,7 @@ import (
 type ImageRepository interface {
 	Create(ctx context.Context, userID uuid.UUID, image *models.Image) (*models.Image, error)
 	List(ctx context.Context, userID uuid.UUID) ([]*models.Image, error)
+	CountByKnowledgeBase(ctx context.Context, userID uuid.UUID, kbIDs []uuid.UUID) (map[uuid.UUID]int64, error)
 	FindByID(ctx context.Context, userID uuid.UUID, imageID uuid.UUID) (*models.Image, error)
 	Update(ctx context.Context, userID uuid.UUID, image *models.Image) (*models.Image, error)
 	UpdateFields(ctx context.Context, userID uuid.UUID, imageID uuid.UUID, image *models.Image, fields *ImageUpdateFields) (*models.Image, error)

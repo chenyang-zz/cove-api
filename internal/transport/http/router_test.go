@@ -2,8 +2,10 @@ package http_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -34,6 +36,9 @@ func newTestRouter(t *testing.T, enableDebugPanicRoute ...bool) http.Handler {
 		ConversationRepo:  newTestConversationRepository(),
 		MessageRepo:       newTestMessageRepository(),
 		KnowledgeBaseRepo: newTestKnowledgeBaseRepository(),
+		DocumentRepo:      newTestDocumentRepository(),
+		ImageRepo:         newTestImageRepository(),
+		Storage:           newTestDocumentStore(),
 		Realtime:          testRealtimeBroker{},
 		SecretCipher:      cipher,
 		TokenIssuer:       security.NewTokenIssuer("test-secret", time.Hour),
@@ -303,6 +308,15 @@ func (r *testKnowledgeBaseRepository) List(ctx context.Context, userID uuid.UUID
 	return out, nil
 }
 
+func (r *testKnowledgeBaseRepository) FindDefault(ctx context.Context, userID uuid.UUID) (*models.KnowledgeBase, error) {
+	for _, row := range r.rows {
+		if row.UserID == userID && row.IsDefault {
+			return row, nil
+		}
+	}
+	return nil, xerr.NotFound("默认知识库不存在")
+}
+
 func (r *testKnowledgeBaseRepository) FindByID(ctx context.Context, userID uuid.UUID, knowledgeBaseID uuid.UUID) (*models.KnowledgeBase, error) {
 	for _, row := range r.rows {
 		if row.ID == knowledgeBaseID && row.UserID == userID {
@@ -353,6 +367,242 @@ func (r *testKnowledgeBaseRepository) Delete(ctx context.Context, userID uuid.UU
 		}
 	}
 	return xerr.NotFound("知识库不存在")
+}
+
+type testDocumentRepository struct {
+	rows []*models.Document
+}
+
+func newTestDocumentRepository() *testDocumentRepository {
+	return &testDocumentRepository{}
+}
+
+func (r *testDocumentRepository) Create(ctx context.Context, userID uuid.UUID, row *models.Document) (*models.Document, error) {
+	if row.ID == uuid.Nil {
+		row.ID = uuid.New()
+	}
+	row.UserID = userID
+	r.rows = append(r.rows, row)
+	return row, nil
+}
+
+func (r *testDocumentRepository) List(ctx context.Context, userID uuid.UUID) ([]*models.Document, error) {
+	out := make([]*models.Document, 0, len(r.rows))
+	for _, row := range r.rows {
+		if row.UserID == userID {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
+func (r *testDocumentRepository) PageList(ctx context.Context, userID uuid.UUID, query repository.DocumentListQuery) ([]*models.Document, int64, error) {
+	out := make([]*models.Document, 0, len(r.rows))
+	for _, row := range r.rows {
+		if row.UserID == userID && (query.KBID == nil || (row.KBID != nil && *row.KBID == *query.KBID)) {
+			out = append(out, row)
+		}
+	}
+	total := int64(len(out))
+	limit, offset := query.LimitOffset(20)
+	start := offset
+	if start >= len(out) {
+		return []*models.Document{}, total, nil
+	}
+	end := start + limit
+	if end > len(out) {
+		end = len(out)
+	}
+	return out[start:end], total, nil
+}
+
+func (r *testDocumentRepository) CountByKnowledgeBase(ctx context.Context, userID uuid.UUID, kbIDs []uuid.UUID) (map[uuid.UUID]int64, error) {
+	allowed := map[uuid.UUID]struct{}{}
+	for _, id := range kbIDs {
+		allowed[id] = struct{}{}
+	}
+	out := map[uuid.UUID]int64{}
+	for _, row := range r.rows {
+		if row.UserID != userID || row.KBID == nil {
+			continue
+		}
+		if _, ok := allowed[*row.KBID]; ok {
+			out[*row.KBID]++
+		}
+	}
+	return out, nil
+}
+
+func (r *testDocumentRepository) FindByID(ctx context.Context, userID uuid.UUID, documentID uuid.UUID) (*models.Document, error) {
+	for _, row := range r.rows {
+		if row.ID == documentID && row.UserID == userID {
+			return row, nil
+		}
+	}
+	return nil, xerr.NotFound("文档不存在")
+}
+
+func (r *testDocumentRepository) Update(ctx context.Context, userID uuid.UUID, row *models.Document) (*models.Document, error) {
+	for i, existing := range r.rows {
+		if existing.ID == row.ID && existing.UserID == userID {
+			row.UserID = userID
+			r.rows[i] = row
+			return row, nil
+		}
+	}
+	return nil, xerr.NotFound("文档不存在")
+}
+
+func (r *testDocumentRepository) UpdateFields(ctx context.Context, userID uuid.UUID, documentID uuid.UUID, row *models.Document, fields *repository.DocumentUpdateFields) (*models.Document, error) {
+	existing, err := r.FindByID(ctx, userID, documentID)
+	if err != nil {
+		return nil, err
+	}
+	for _, column := range fields.Columns() {
+		switch column {
+		case "kb_id":
+			existing.KBID = row.KBID
+		case "status":
+			existing.Status = row.Status
+		case "progress":
+			existing.Progress = row.Progress
+		case "error_msg":
+			existing.ErrorMsg = row.ErrorMsg
+		}
+	}
+	return existing, nil
+}
+
+func (r *testDocumentRepository) Delete(ctx context.Context, userID uuid.UUID, documentID uuid.UUID) error {
+	for i, row := range r.rows {
+		if row.ID == documentID && row.UserID == userID {
+			r.rows = append(r.rows[:i], r.rows[i+1:]...)
+			return nil
+		}
+	}
+	return xerr.NotFound("文档不存在")
+}
+
+type testImageRepository struct {
+	rows []*models.Image
+}
+
+func newTestImageRepository() *testImageRepository {
+	return &testImageRepository{}
+}
+
+func (r *testImageRepository) Create(ctx context.Context, userID uuid.UUID, row *models.Image) (*models.Image, error) {
+	if row.ID == uuid.Nil {
+		row.ID = uuid.New()
+	}
+	row.UserID = userID
+	r.rows = append(r.rows, row)
+	return row, nil
+}
+
+func (r *testImageRepository) List(ctx context.Context, userID uuid.UUID) ([]*models.Image, error) {
+	out := make([]*models.Image, 0, len(r.rows))
+	for _, row := range r.rows {
+		if row.UserID == userID {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
+func (r *testImageRepository) CountByKnowledgeBase(ctx context.Context, userID uuid.UUID, kbIDs []uuid.UUID) (map[uuid.UUID]int64, error) {
+	allowed := map[uuid.UUID]struct{}{}
+	for _, id := range kbIDs {
+		allowed[id] = struct{}{}
+	}
+	out := map[uuid.UUID]int64{}
+	for _, row := range r.rows {
+		if row.UserID != userID || row.KBID == nil {
+			continue
+		}
+		if _, ok := allowed[*row.KBID]; ok {
+			out[*row.KBID]++
+		}
+	}
+	return out, nil
+}
+
+func (r *testImageRepository) FindByID(ctx context.Context, userID uuid.UUID, imageID uuid.UUID) (*models.Image, error) {
+	for _, row := range r.rows {
+		if row.ID == imageID && row.UserID == userID {
+			return row, nil
+		}
+	}
+	return nil, xerr.NotFound("图片不存在")
+}
+
+func (r *testImageRepository) Update(ctx context.Context, userID uuid.UUID, row *models.Image) (*models.Image, error) {
+	for i, existing := range r.rows {
+		if existing.ID == row.ID && existing.UserID == userID {
+			row.UserID = userID
+			r.rows[i] = row
+			return row, nil
+		}
+	}
+	return nil, xerr.NotFound("图片不存在")
+}
+
+func (r *testImageRepository) UpdateFields(ctx context.Context, userID uuid.UUID, imageID uuid.UUID, row *models.Image, fields *repository.ImageUpdateFields) (*models.Image, error) {
+	existing, err := r.FindByID(ctx, userID, imageID)
+	if err != nil {
+		return nil, err
+	}
+	for _, column := range fields.Columns() {
+		switch column {
+		case "kb_id":
+			existing.KBID = row.KBID
+		case "status":
+			existing.Status = row.Status
+		case "error_msg":
+			existing.ErrorMsg = row.ErrorMsg
+		}
+	}
+	return existing, nil
+}
+
+func (r *testImageRepository) Delete(ctx context.Context, userID uuid.UUID, imageID uuid.UUID) error {
+	for i, row := range r.rows {
+		if row.ID == imageID && row.UserID == userID {
+			r.rows = append(r.rows[:i], r.rows[i+1:]...)
+			return nil
+		}
+	}
+	return xerr.NotFound("图片不存在")
+}
+
+type testDocumentStore struct {
+	data map[string][]byte
+}
+
+func newTestDocumentStore() *testDocumentStore {
+	return &testDocumentStore{data: map[string][]byte{}}
+}
+
+func (s *testDocumentStore) Ping(ctx context.Context) error {
+	return nil
+}
+
+func (s *testDocumentStore) Put(ctx context.Context, key string, data []byte) error {
+	s.data[key] = append([]byte(nil), data...)
+	return nil
+}
+
+func (s *testDocumentStore) Get(ctx context.Context, key string) ([]byte, error) {
+	data, ok := s.data[key]
+	if !ok {
+		return nil, xerr.NotFound("文件不存在")
+	}
+	return append([]byte(nil), data...), nil
+}
+
+func (s *testDocumentStore) Delete(ctx context.Context, key string) error {
+	delete(s.data, key)
+	return nil
 }
 
 type testUserRepository struct {
@@ -620,4 +870,171 @@ func TestKnowledgeBaseListCreatesDefaultForFreshUser(t *testing.T) {
 		got.Color != "#155EEF" || !got.IsDefault || !got.ChatEnabled {
 		t.Fatalf("default knowledge base = %+v, want configured default", got)
 	}
+}
+
+func TestDocumentRoutesSupportCoreAuthenticatedFlow(t *testing.T) {
+	// 验证文档 HTTP 路由支持上传、列表、详情、状态、预览、重试、移动、删除和检索绑定。
+	router := newTestRouter(t)
+
+	kb := httptest.NewRecorder()
+	kbReq := httptest.NewRequest(http.MethodGet, "/api/knowledge-base/", nil)
+	kbReq.Header.Set("Authorization", "Bearer dev-token")
+	router.ServeHTTP(kb, kbReq)
+	if kb.Code != http.StatusOK {
+		t.Fatalf("kb status = %d body=%s", kb.Code, kb.Body.String())
+	}
+	var kbBody struct {
+		Data struct {
+			List []struct {
+				ID string `json:"id"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(kb.Body.Bytes(), &kbBody); err != nil {
+		t.Fatalf("unmarshal kb body: %v", err)
+	}
+	if len(kbBody.Data.List) != 1 || kbBody.Data.List[0].ID == "" {
+		t.Fatalf("kb body = %+v, want default knowledge base id", kbBody.Data)
+	}
+	kbID := kbBody.Data.List[0].ID
+
+	upload := httptest.NewRecorder()
+	uploadReq := newMultipartDocumentRequest(t, "/api/document/upload", "doc.txt", "hello", kbID)
+	uploadReq.Header.Set("Authorization", "Bearer dev-token")
+	router.ServeHTTP(upload, uploadReq)
+	if upload.Code != http.StatusOK {
+		t.Fatalf("upload status = %d body=%s", upload.Code, upload.Body.String())
+	}
+	var uploadBody struct {
+		Data struct {
+			ID       string   `json:"id"`
+			KBID     string   `json:"kb_id"`
+			FileName string   `json:"file_name"`
+			FileExt  string   `json:"file_ext"`
+			Status   string   `json:"status"`
+			Tags     []string `json:"tags"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(upload.Body.Bytes(), &uploadBody); err != nil {
+		t.Fatalf("unmarshal upload body: %v", err)
+	}
+	if uploadBody.Data.ID == "" || uploadBody.Data.KBID != kbID || uploadBody.Data.FileName != "doc.txt" || uploadBody.Data.FileExt != ".txt" || uploadBody.Data.Status != "pending" {
+		t.Fatalf("upload body = %+v, want created document", uploadBody.Data)
+	}
+	docID := uploadBody.Data.ID
+
+	kbAfterUpload := httptest.NewRecorder()
+	kbAfterUploadReq := httptest.NewRequest(http.MethodGet, "/api/knowledge-base/", nil)
+	kbAfterUploadReq.Header.Set("Authorization", "Bearer dev-token")
+	router.ServeHTTP(kbAfterUpload, kbAfterUploadReq)
+	if kbAfterUpload.Code != http.StatusOK {
+		t.Fatalf("kb after upload status = %d body=%s", kbAfterUpload.Code, kbAfterUpload.Body.String())
+	}
+	var kbAfterUploadBody struct {
+		Data struct {
+			List []struct {
+				ID         string `json:"id"`
+				DocCount   int    `json:"doc_count"`
+				ImageCount int    `json:"image_count"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(kbAfterUpload.Body.Bytes(), &kbAfterUploadBody); err != nil {
+		t.Fatalf("unmarshal kb after upload body: %v", err)
+	}
+	if len(kbAfterUploadBody.Data.List) != 1 || kbAfterUploadBody.Data.List[0].ID != kbID ||
+		kbAfterUploadBody.Data.List[0].DocCount != 1 || kbAfterUploadBody.Data.List[0].ImageCount != 0 {
+		t.Fatalf("kb after upload body = %+v, want doc_count=1 image_count=0", kbAfterUploadBody.Data)
+	}
+
+	list := httptest.NewRecorder()
+	listReq := httptest.NewRequest(http.MethodGet, "/api/document/?page=1&page_size=10&kbid="+kbID, nil)
+	listReq.Header.Set("Authorization", "Bearer dev-token")
+	router.ServeHTTP(list, listReq)
+	if list.Code != http.StatusOK {
+		t.Fatalf("list status = %d body=%s", list.Code, list.Body.String())
+	}
+	var listBody struct {
+		Data struct {
+			Total int `json:"total"`
+			List  []struct {
+				ID string `json:"id"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &listBody); err != nil {
+		t.Fatalf("unmarshal list body: %v", err)
+	}
+	if listBody.Data.Total != 1 || len(listBody.Data.List) != 1 || listBody.Data.List[0].ID != docID {
+		t.Fatalf("list body = %+v, want uploaded document", listBody.Data)
+	}
+
+	for _, route := range []string{"/api/document/" + docID, "/api/document/" + docID + "/status", "/api/document/" + docID + "/preview"} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, route, nil)
+		req.Header.Set("Authorization", "Bearer dev-token")
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s status = %d body=%s", route, w.Code, w.Body.String())
+		}
+	}
+
+	retry := httptest.NewRecorder()
+	retryReq := httptest.NewRequest(http.MethodPost, "/api/document/"+docID+"/retry", nil)
+	retryReq.Header.Set("Authorization", "Bearer dev-token")
+	router.ServeHTTP(retry, retryReq)
+	if retry.Code != http.StatusOK {
+		t.Fatalf("retry status = %d body=%s", retry.Code, retry.Body.String())
+	}
+
+	move := httptest.NewRecorder()
+	moveReq := httptest.NewRequest(http.MethodPost, "/api/document/"+docID+"/move", strings.NewReader(`{"kb_id":"`+kbID+`"}`))
+	moveReq.Header.Set("Content-Type", "application/json")
+	moveReq.Header.Set("Authorization", "Bearer dev-token")
+	router.ServeHTTP(move, moveReq)
+	if move.Code != http.StatusOK {
+		t.Fatalf("move status = %d body=%s", move.Code, move.Body.String())
+	}
+
+	search := httptest.NewRecorder()
+	searchReq := httptest.NewRequest(http.MethodPost, "/api/document/"+docID+"/search", strings.NewReader(`{"query":"hello","top_k":5}`))
+	searchReq.Header.Set("Content-Type", "application/json")
+	searchReq.Header.Set("Authorization", "Bearer dev-token")
+	router.ServeHTTP(search, searchReq)
+	if search.Code != http.StatusOK {
+		t.Fatalf("search status = %d body=%s", search.Code, search.Body.String())
+	}
+	if !strings.Contains(search.Body.String(), `"list":[]`) {
+		t.Fatalf("search body = %s, want empty list", search.Body.String())
+	}
+
+	del := httptest.NewRecorder()
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/document/"+docID, nil)
+	delReq.Header.Set("Authorization", "Bearer dev-token")
+	router.ServeHTTP(del, delReq)
+	if del.Code != http.StatusOK {
+		t.Fatalf("delete status = %d body=%s", del.Code, del.Body.String())
+	}
+}
+
+func newMultipartDocumentRequest(t *testing.T, path string, fileName string, content string, kbID string) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("kbid", kbID); err != nil {
+		t.Fatalf("write kbid: %v", err)
+	}
+	part, err := writer.CreateFormFile("file", fileName)
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write([]byte(content)); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, path, &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return req
 }

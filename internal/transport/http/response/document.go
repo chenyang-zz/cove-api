@@ -6,7 +6,11 @@
 
 package response
 
-import "github.com/google/uuid"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type DocumentResponse struct {
 	ID         uuid.UUID  `json:"id"`
@@ -21,8 +25,8 @@ type DocumentResponse struct {
 	ChunkNum   int64      `json:"chunk_num"`
 	ErrorMsg   *string    `json:"error_msg"`
 	Tags       []string   `json:"tags"`
-	CreatedAt  string     `json:"created_at"`
-	UpdatedAt  string     `json:"updated_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 type PreviewDocumentResponse struct {

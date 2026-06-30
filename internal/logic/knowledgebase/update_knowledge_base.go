@@ -66,12 +66,15 @@ func (l *UpdateKnowledgeBaseLogic) UpdateKnowledgeBase(userID uuid.UUID, input *
 		return nil, err
 	}
 
-	// TODO 获取 doc和img count
+	counts, err := loadKnowledgeBaseContentCount(l.ctx, l.svcCtx, userID, row)
+	if err != nil {
+		return nil, err
+	}
 
 	l.log.InfoContext(l.ctx, "更新知识库",
 		slog.String("user_id", userID.String()),
 		slog.String("knowledge_base_id", knowledgeBaseID.String()),
 		slog.Any("fields", fields.Columns()),
 	)
-	return mapper.KnowledgeBaseToResponse(row), nil
+	return mapper.KnowledgeBaseToResponse(row, counts.docCount, counts.imageCount), nil
 }

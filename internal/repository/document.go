@@ -11,10 +11,18 @@ import (
 type DocumentRepository interface {
 	Create(ctx context.Context, userID uuid.UUID, document *models.Document) (*models.Document, error)
 	List(ctx context.Context, userID uuid.UUID) ([]*models.Document, error)
+	PageList(ctx context.Context, userID uuid.UUID, query DocumentListQuery) ([]*models.Document, int64, error)
+	CountByKnowledgeBase(ctx context.Context, userID uuid.UUID, kbIDs []uuid.UUID) (map[uuid.UUID]int64, error)
 	FindByID(ctx context.Context, userID uuid.UUID, documentID uuid.UUID) (*models.Document, error)
 	Update(ctx context.Context, userID uuid.UUID, document *models.Document) (*models.Document, error)
 	UpdateFields(ctx context.Context, userID uuid.UUID, documentID uuid.UUID, document *models.Document, fields *DocumentUpdateFields) (*models.Document, error)
 	Delete(ctx context.Context, userID uuid.UUID, documentID uuid.UUID) error
+}
+
+type DocumentListQuery struct {
+	KBID *uuid.UUID
+	Tag  *string
+	PageQuery
 }
 
 type DocumentUpdateFields struct {

@@ -5,7 +5,7 @@ import (
 	"github.com/boxify/api-go/internal/transport/http/response"
 )
 
-func KnowledgeBaseToResponse(row *models.KnowledgeBase) *response.KnowledgeBaseResponse {
+func KnowledgeBaseToResponse(row *models.KnowledgeBase, docCount int64, imageCount int64) *response.KnowledgeBaseResponse {
 	if row == nil {
 		return nil
 	}
@@ -17,8 +17,8 @@ func KnowledgeBaseToResponse(row *models.KnowledgeBase) *response.KnowledgeBaseR
 		Color:       row.Color,
 		IsDefault:   row.IsDefault,
 		ChatEnabled: row.ChatEnabled,
-		DocCount:    0,
-		ImageCount:  0,
+		DocCount:    docCount,
+		ImageCount:  imageCount,
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}

@@ -39,7 +39,10 @@ func (l *GetKnowledgeBaseLogic) GetKnowledgeBase(userID uuid.UUID, input *reques
 		return nil, err
 	}
 
-	// TODO 获取 doc和img count
+	counts, err := loadKnowledgeBaseContentCount(l.ctx, l.svcCtx, userID, row)
+	if err != nil {
+		return nil, err
+	}
 
-	return mapper.KnowledgeBaseToResponse(row), nil
+	return mapper.KnowledgeBaseToResponse(row, counts.docCount, counts.imageCount), nil
 }

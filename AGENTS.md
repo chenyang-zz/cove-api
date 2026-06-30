@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **boxify-api-go** (5072 symbols, 19104 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **boxify-api-go** (5405 symbols, 21214 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -45,3 +45,7 @@ This project is indexed by GitNexus as **boxify-api-go** (5072 symbols, 19104 re
 ## Testing
 
 - When adding or modifying test functions, you must use Chinese comments to explain what the test verifies.
+
+## Generated Code
+
+- For generated code, key steps must include Chinese comments explaining what they do.

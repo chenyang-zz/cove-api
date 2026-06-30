@@ -2,10 +2,7 @@ package auth
 
 import (
 	"context"
-	"io"
 	"log/slog"
-	"path/filepath"
-	"strings"
 
 	"github.com/boxify/api-go/internal/infrastructure/storage"
 	"github.com/boxify/api-go/internal/mapper"
@@ -13,6 +10,7 @@ import (
 	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/request"
 	"github.com/boxify/api-go/internal/transport/http/response"
+	"github.com/boxify/api-go/internal/util/uploadfile"
 	"github.com/boxify/api-go/internal/xerr"
 	"github.com/google/uuid"
 )
@@ -36,12 +34,19 @@ func NewUpdateAvatarLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Upda
 }
 
 func (l *UpdateAvatarLogic) UpdateAvatar(userID uuid.UUID, input *request.FileRequest) (*response.UserResponse, error) {
+	if input == nil || input.File == nil {
+		return nil, xerr.BadRequest("上传文件不能为空")
+	}
 	user, err := l.svcCtx.UserRepo.FindByID(l.ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	ext := strings.ToLower(filepath.Ext(input.File.Filename))
+	fileInfo, err := uploadfile.Read(input.File, MaxAvatarSize, "头像大小不能超过 5MB 限制", "读取头像文件出错")
+	if err != nil {
+		return nil, err
+	}
+	ext := fileInfo.Ext
 	support := false
 	for _, supportExt := range SupportAvatarExts {
 		if supportExt == ext {
@@ -53,23 +58,8 @@ func (l *UpdateAvatarLogic) UpdateAvatar(userID uuid.UUID, input *request.FileRe
 		return nil, xerr.BadRequestf("不支持的图谱类型: %s", ext)
 	}
 
-	if input.File.Size > MaxAvatarSize {
-		return nil, xerr.BadRequest("头像大小不能超过 5MB 限制")
-	}
-
 	fileKey := storage.BuildFileKey(userID, "avatar", uuid.New(), ext)
-	f, err := input.File.Open()
-	if err != nil {
-		return nil, xerr.Wrap(err, "读取头像文件出错")
-	}
-	defer f.Close()
-
-	fileContent, err := io.ReadAll(f)
-	if err != nil {
-		return nil, xerr.Wrap(err, "读取头像文件出错")
-	}
-
-	err = l.svcCtx.Storage.Put(l.ctx, fileKey, fileContent)
+	err = l.svcCtx.Storage.Put(l.ctx, fileKey, fileInfo.Content)
 	if err != nil {
 		return nil, err
 	}

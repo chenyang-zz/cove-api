@@ -1,7 +1,9 @@
 package auth_test
 
 import (
+	"bytes"
 	"context"
+	"mime/multipart"
 	"testing"
 	"time"
 
@@ -110,6 +112,58 @@ func (r *fakeRefreshTokenRepository) Revoke(ctx context.Context, id uuid.UUID, r
 		}
 	}
 	return xerr.InvalidToken()
+}
+
+type fakeAuthStorage struct {
+	data map[string][]byte
+}
+
+func newFakeAuthStorage() *fakeAuthStorage {
+	return &fakeAuthStorage{data: map[string][]byte{}}
+}
+
+func (s *fakeAuthStorage) Ping(ctx context.Context) error {
+	return nil
+}
+
+func (s *fakeAuthStorage) Put(ctx context.Context, key string, data []byte) error {
+	s.data[key] = append([]byte(nil), data...)
+	return nil
+}
+
+func (s *fakeAuthStorage) Get(ctx context.Context, key string) ([]byte, error) {
+	data, ok := s.data[key]
+	if !ok {
+		return nil, xerr.NotFound("文件不存在")
+	}
+	return append([]byte(nil), data...), nil
+}
+
+func (s *fakeAuthStorage) Delete(ctx context.Context, key string) error {
+	delete(s.data, key)
+	return nil
+}
+
+func testAuthFileHeader(t *testing.T, name string, content []byte) *multipart.FileHeader {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", name)
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatalf("write form file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+	reader := multipart.NewReader(&body, writer.Boundary())
+	form, err := reader.ReadForm(int64(len(content)) + 1024)
+	if err != nil {
+		t.Fatalf("read form: %v", err)
+	}
+	return form.File["file"][0]
 }
 
 func TestRegisterLogicRegistersUserAndReturnsRefreshToken(t *testing.T) {
@@ -241,6 +295,51 @@ func TestMeLogicRequiresUserIDInContext(t *testing.T) {
 	}
 	if xerr.From(err).Kind != xerr.KindUnauthorized {
 		t.Fatalf("Me error = %v, want unauthorized", err)
+	}
+}
+
+func TestUpdateAvatarStoresFileAndUpdatesUser(t *testing.T) {
+	// 验证上传头像会读取文件内容、写入对象存储，并把用户 avatar 更新为存储 key。
+	users := newFakeUserRepository()
+	store := newFakeAuthStorage()
+	userID := uuid.New()
+	users.byID[userID] = &models.User{ID: userID, Username: "alice", PasswordHash: "hash"}
+	users.byLogin["alice"] = users.byID[userID]
+	svcCtx := &svc.ServiceContext{UserRepo: users, Storage: store}
+
+	out, err := auth.NewUpdateAvatarLogic(t.Context(), svcCtx).UpdateAvatar(userID, &request.FileRequest{
+		File: testAuthFileHeader(t, " Avatar.PNG ", []byte("image-bytes")),
+	})
+	if err != nil {
+		t.Fatalf("UpdateAvatar error = %v", err)
+	}
+	if out.Avatar == nil || *out.Avatar == "" {
+		t.Fatalf("avatar = %v, want storage key", out.Avatar)
+	}
+	if got := string(store.data[*out.Avatar]); got != "image-bytes" {
+		t.Fatalf("stored avatar content = %q, want image-bytes", got)
+	}
+}
+
+func TestUpdateAvatarRejectsInvalidFiles(t *testing.T) {
+	// 验证上传头像会拒绝空文件、不支持的扩展名和超过 5MB 的文件。
+	users := newFakeUserRepository()
+	userID := uuid.New()
+	users.byID[userID] = &models.User{ID: userID, Username: "alice", PasswordHash: "hash"}
+	users.byLogin["alice"] = users.byID[userID]
+	svcCtx := &svc.ServiceContext{UserRepo: users, Storage: newFakeAuthStorage()}
+	logic := auth.NewUpdateAvatarLogic(t.Context(), svcCtx)
+
+	if _, err := logic.UpdateAvatar(userID, nil); err == nil {
+		t.Fatal("UpdateAvatar nil input error = nil, want error")
+	}
+	if _, err := logic.UpdateAvatar(userID, &request.FileRequest{File: testAuthFileHeader(t, "avatar.bmp", []byte("x"))}); err == nil {
+		t.Fatal("UpdateAvatar unsupported ext error = nil, want error")
+	}
+	large := testAuthFileHeader(t, "avatar.png", []byte("x"))
+	large.Size = auth.MaxAvatarSize + 1
+	if _, err := logic.UpdateAvatar(userID, &request.FileRequest{File: large}); err == nil {
+		t.Fatal("UpdateAvatar oversized error = nil, want error")
 	}
 }
 

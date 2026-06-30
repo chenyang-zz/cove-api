@@ -47,12 +47,15 @@ func (l *EnabledChatLogic) EnabledChat(userID uuid.UUID, input *request.EnabledC
 		return nil, err
 	}
 
-	// TODO 获取 doc和img count
+	counts, err := loadKnowledgeBaseContentCount(l.ctx, l.svcCtx, userID, row)
+	if err != nil {
+		return nil, err
+	}
 
 	l.log.InfoContext(l.ctx, "切换知识库聊天开关",
 		slog.String("user_id", userID.String()),
 		slog.String("knowledge_base_id", knowledgeBaseID.String()),
 		slog.Bool("chat_enabled", *input.ChatEnabled),
 	)
-	return mapper.KnowledgeBaseToResponse(row), nil
+	return mapper.KnowledgeBaseToResponse(row, counts.docCount, counts.imageCount), nil
 }

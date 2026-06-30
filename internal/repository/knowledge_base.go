@@ -11,6 +11,7 @@ import (
 type KnowledgeBaseRepository interface {
 	Create(ctx context.Context, userID uuid.UUID, knowledgeBase *models.KnowledgeBase) (*models.KnowledgeBase, error)
 	List(ctx context.Context, userID uuid.UUID) ([]*models.KnowledgeBase, error)
+	FindDefault(ctx context.Context, userID uuid.UUID) (*models.KnowledgeBase, error)
 	FindByID(ctx context.Context, userID uuid.UUID, knowledgeBaseID uuid.UUID) (*models.KnowledgeBase, error)
 	Update(ctx context.Context, userID uuid.UUID, knowledgeBase *models.KnowledgeBase) (*models.KnowledgeBase, error)
 	UpdateFields(ctx context.Context, userID uuid.UUID, knowledgeBaseID uuid.UUID, knowledgeBase *models.KnowledgeBase, fields *KnowledgeBaseUpdateFields) (*models.KnowledgeBase, error)

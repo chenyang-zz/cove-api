@@ -20,8 +20,8 @@ type KnowledgeBaseResponse struct {
 	Color       string    `json:"color"`
 	IsDefault   bool      `json:"is_default"`
 	ChatEnabled bool      `json:"chat_enabled"`
-	DocCount    int       `json:"doc_count"`
-	ImageCount  int       `json:"image_count"`
+	DocCount    int64     `json:"doc_count"`
+	ImageCount  int64     `json:"image_count"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

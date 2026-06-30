@@ -53,5 +53,5 @@ func (l *CreateKnowledgeBaseLogic) CreateKnowledgeBase(userID uuid.UUID, input *
 		slog.String("knowledge_base_id", row.ID.String()),
 		slog.String("name", row.Name),
 	)
-	return mapper.KnowledgeBaseToResponse(row), nil
+	return mapper.KnowledgeBaseToResponse(row, 0, 0), nil
 }

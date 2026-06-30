@@ -42,6 +42,20 @@ func (r *KnowledgeBaseRepository) List(ctx context.Context, userID uuid.UUID) ([
 	return rows, nil
 }
 
+func (r *KnowledgeBaseRepository) FindDefault(ctx context.Context, userID uuid.UUID) (*models.KnowledgeBase, error) {
+	knowledgeBase := &models.KnowledgeBase{}
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND is_default = ?", userID, true).
+		First(knowledgeBase).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, xerr.NotFound("默认知识库不存在")
+	}
+	if err != nil {
+		return nil, xerr.Wrapf(err, "查询默认知识库失败")
+	}
+	return knowledgeBase, nil
+}
+
 func (r *KnowledgeBaseRepository) FindByID(ctx context.Context, userID uuid.UUID, knowledgeBaseID uuid.UUID) (*models.KnowledgeBase, error) {
 	knowledgeBase := &models.KnowledgeBase{}
 	err := r.db.WithContext(ctx).

@@ -1,0 +1,171 @@
+internal/logic/document/move_document.go
+  s_bed6061d2f5706::t_cbed837f5a0832 5-8,10,35-57
+internal/logic/document/import_document_from_url.go
+  s_bed6061d2f5706::t_2b5aed57617874 9-10,31-35
+internal/util/uploadfile/uploadfile_test.go
+  s_bed6061d2f5706::t_a32eb7a8a06cc0 1-63
+internal/logic/knowledgebase/knowledgebase_test.go
+  s_bed6061d2f5706::t_9633a0e857183d 294,296,298
+  s_bed6061d2f5706::t_2db1a5b5b2231e 247,260-277,279,283,287,291-293,295,297,299,310-314,349-353,374-380,383,402,437-443,445,460
+  s_bed6061d2f5706::t_f46ef962f01a85 17-24,160-169,304,321-323,343,360-362
+  s_bed6061d2f5706::t_4099980760e54d 26-121
+  s_bed6061d2f5706::t_03d39e01782132 25
+internal/transport/http/response/knowledgebase.go
+  s_bed6061d2f5706::t_5a6416aed000e2 23-24
+internal/svc/context.go
+  h_e1f1392360ad67 54-55,160-161
+internal/repository/knowledge_base.go
+  s_bed6061d2f5706::t_56215b0d4ff4da 14
+internal/repository/postgres/document.go
+  s_bed6061d2f5706::t_cdbddaef57d430 77,82,84-107
+  s_bed6061d2f5706::t_18d19050b86126 72,111
+  s_bed6061d2f5706::t_7c8affeb3c1435 45-46,70,74-75
+  s_bed6061d2f5706::t_665b31874d5006 8-9,47-68,71,78-81
+  s_bed6061d2f5706::t_bf6f831824bacd 69
+  s_bed6061d2f5706::t_4e7ea4a67281ff 73
+  s_bed6061d2f5706::t_45914b8a54e468 76
+  s_bed6061d2f5706::t_6be139d5692a02 83
+internal/transport/http/request/base.go
+  s_bed6061d2f5706::t_9c731f8aa52fe4 10-11
+AGENTS.md
+  s_df0bba90c91a6e::t_a1b1026574a9b1 48-51
+  s_bed6061d2f5706::t_c1e84f256ab4cd 4
+internal/logic/document/search_documents.go
+  s_bed6061d2f5706::t_929862c69e609a 8,30-34
+internal/mapper/knowledgebase.go
+  s_bed6061d2f5706::t_5a6416aed000e2 8
+  s_bed6061d2f5706::t_4a2549d7cd37eb 20-21
+internal/logic/document/list_documents.go
+  s_bed6061d2f5706::t_eacbd152e347cf 8,49,53-54
+  s_bed6061d2f5706::t_c9b9f925b300ee 42-48
+  s_bed6061d2f5706::t_72a297bb143e2c 5-6,12,34-41,50-52,55-62
+internal/repository/page.go
+  s_bed6061d2f5706::t_7c10cf62079923 1-21
+internal/logic/knowledgebase/helper.go
+  s_bed6061d2f5706::t_5a6416aed000e2 9,59-117
+  s_bed6061d2f5706::t_30fb468194b8da 4-8,15-21,32-58
+internal/logic/knowledgebase/create_knowledge_base.go
+  s_bed6061d2f5706::t_8627613c7a755b 56
+internal/logic/knowledgebase/update_knowledge_base.go
+  s_bed6061d2f5706::t_8627613c7a755b 69-72,79
+internal/transport/http/request/document.go
+  s_bed6061d2f5706::t_5848ffa5b8ef1a 33
+  h_e1f1392360ad67 13,18,28,39
+  s_bed6061d2f5706::t_579f868cca6386 27
+internal/logic/knowledgebase/enabled_chat.go
+  s_bed6061d2f5706::t_8627613c7a755b 50-53,60
+internal/logic/knowledgebase/get_knowledge_base_list.go
+  s_bed6061d2f5706::t_8627613c7a755b 41,47-48
+  s_bed6061d2f5706::t_4863a1ca6b8d32 33
+  s_bed6061d2f5706::t_ad870c19016e16 34-35
+  s_bed6061d2f5706::t_354c1e67b1ecfb 40
+  s_bed6061d2f5706::t_e16b989ab9a9d1 5
+internal/mapper/document.go
+  s_bed6061d2f5706::t_16d9c2f5057ce4 28-29
+  s_bed6061d2f5706::t_b83c17a52dd65d 1-12,14-27,30,39
+  s_bed6061d2f5706::t_18d19050b86126 13,31-38
+internal/repository/postgres/document_knowledgebase_test.go
+  s_bed6061d2f5706::t_2a4b6172df77d3 68,71-85
+  s_bed6061d2f5706::t_3a775eb2bd3ec8 16,92-102
+  s_bed6061d2f5706::t_ae9a6143fe16c1 106-190
+  s_bed6061d2f5706::t_6fa6116bc5fd12 1-15,17-67,69-70,86-91,103-105,191-229
+internal/repository/document.go
+  s_bed6061d2f5706::t_29e470e14a4733 15
+  s_bed6061d2f5706::t_4c0e65ada7da65 22
+  s_bed6061d2f5706::t_7c10cf62079923 14,23-25
+  s_bed6061d2f5706::t_ed2268ab11bee0 26-27
+internal/repository/postgres/knowledge_base.go
+  s_bed6061d2f5706::t_fbd48916a76e39 45-58
+internal/logic/document/helper.go
+  s_bed6061d2f5706::t_e02aacd9e5c7aa 1-34,38-39,41-73,76-93
+  s_bed6061d2f5706::t_478dd0bb10c064 35-37,40
+  s_bed6061d2f5706::t_42d70f8e0926d3 74-75
+internal/logic/auth/auth_test.go
+  s_bed6061d2f5706::t_f45f51998938d7 4,6,117-168,301-344
+  s_bed6061d2f5706::t_deecc23e022cdd 345
+internal/mapper/document_test.go
+  s_bed6061d2f5706::t_daee756fe48c09 1-30
+  s_bed6061d2f5706::t_61d32e099bf2e1 31-46
+internal/repository/image.go
+  s_bed6061d2f5706::t_29e470e14a4733 14
+internal/logic/document/get_document_status.go
+  s_bed6061d2f5706::t_6f67d988fa9bd8 31-43
+internal/logic/knowledgebase/get_knowledge_base.go
+  s_bed6061d2f5706::t_8627613c7a755b 42-45,47
+internal/logic/document/upload_document.go
+  s_bed6061d2f5706::t_c3e096c848bc21 8,107
+  s_bed6061d2f5706::t_69a07b7252c69d 15,41,44-46,48,62,69,71
+  h_e1f1392360ad67 86-87
+  s_bed6061d2f5706::t_00c71d121d3982 5-7,9-10,16,38-40,42-43,47,49-61,63-68,70,72-85,88-106,108-111
+internal/logic/document/get_document.go
+  s_bed6061d2f5706::t_846417b64ddd9b 5-6,11,32-41
+internal/logic/document/delete_document.go
+  s_bed6061d2f5706::t_072e783fe56cce 5-6,31-55
+internal/transport/http/router_test.go
+  s_bed6061d2f5706::t_8cba7599861281 40,419-435,484-575
+  s_bed6061d2f5706::t_c78b75425348c5 389,392-401,407-408,412
+  s_bed6061d2f5706::t_29634c0150e4d2 926-949
+  s_bed6061d2f5706::t_79eb9a6036ea5c 5,8,39,41,372-388,390-391,403-404,415,417-418,436-483,576-605
+  s_bed6061d2f5706::t_92973d7f011e54 991-992
+  s_bed6061d2f5706::t_1def2b8e1f05b8 606,874-925,950-990,993-1040
+  s_bed6061d2f5706::t_e0142cdc600a0d 311-319,402,405-406,409-411,413-414,416
+  s_bed6061d2f5706::t_40fed0d54399c6 607
+internal/logic/document/preview_document_content.go
+  s_bed6061d2f5706::t_dfcb92ddd52849 5-6,11,34-69
+internal/logic/auth/update_avatar.go
+  s_bed6061d2f5706::t_3fcfb8e16eeea8 13,37-39,45-49,62
+internal/repository/postgres/image.go
+  s_bed6061d2f5706::t_cdbddaef57d430 45-68
+internal/logic/document/document_test.go
+  s_bed6061d2f5706::t_79b525e3ab78a4 7
+  s_bed6061d2f5706::t_f90c5cd3c34e37 21-27,29
+  s_bed6061d2f5706::t_aa334f556b232f 50-52
+  s_bed6061d2f5706::t_2bce0edcbc064d 85-89,138-140,169-178,279-281,296-310,312-317,370,372,374,380,385-386
+  s_bed6061d2f5706::t_73b0c30316a369 28,53-60,78,377-379,381-383
+  s_bed6061d2f5706::t_19a4acb5ec1a92 361,367,391-393,397,401,411-413
+  s_bed6061d2f5706::t_8cba7599861281 61-77
+  s_bed6061d2f5706::t_d9dc48ed56abc2 1-6,8-20,30-49,79-84,90-137,141-168,179-278,282-295,311,318-360,362-366,368-369,371,373,375-376,384,387-390,394-396,398-400,402-410,414-537
+internal/logic/document/re_parse_document.go
+  s_bed6061d2f5706::t_17d86eed483c2a 5-8,10,14,34-54
+internal/transport/http/handler/document.go
+  h_e1f1392360ad67 209
+  s_bed6061d2f5706::t_9422bc2786624d 46-51,88-93,153-158,185,195-196,200
+internal/transport/http/response/document.go
+  s_bed6061d2f5706::t_ad1abc7b1f0ba8 9-13,28-29
+CLAUDE.md
+  s_bed6061d2f5706::t_c1e84f256ab4cd 4
+internal/util/uploadfile/uploadfile.go
+  s_bed6061d2f5706::t_02f5065e0559e3 1-48
+internal/transport/http/routes/document.go
+  h_e1f1392360ad67 23,36,54,75
+  s_bed6061d2f5706::t_69e0ea37aef5b4 32,68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "7da4ccc9f86828963e9454f29effdc14ec00a95f",
+  "prompts": {},
+  "humans": {
+    "h_e1f1392360ad67": {
+      "author": "chenyang <904852749@qq.com>"
+    }
+  },
+  "sessions": {
+    "s_bed6061d2f5706": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1817-2478-7702-8e5a-fc4304ca0bc4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    },
+    "s_df0bba90c91a6e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f13a2-db16-7c91-bdb4-859b209ce6bb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

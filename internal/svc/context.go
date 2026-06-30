@@ -9,6 +9,7 @@ import (
 
 	"github.com/boxify/api-go/internal/config"
 	corellm "github.com/boxify/api-go/internal/core/llm"
+	coremcp "github.com/boxify/api-go/internal/core/mcp"
 	"github.com/boxify/api-go/internal/core/prompt"
 	infraes "github.com/boxify/api-go/internal/infrastructure/db/es"
 	dbneo4j "github.com/boxify/api-go/internal/infrastructure/db/neo4j"
@@ -52,8 +53,9 @@ type ServiceContext struct {
 	SecretCipher *security.SecretCipher
 	TokenIssuer  *security.TokenIssuer
 
-	PromptManager *prompt.Manager
-	LLMManager    *corellm.Manager
+	PromptManager  *prompt.Manager
+	LLMManager     *corellm.Manager
+	MCPToolService *coremcp.Service
 
 	closeOnce sync.Once
 	closeErr  error
@@ -80,8 +82,9 @@ func New(ctx context.Context, cfg config.Config) (*ServiceContext, error) {
 		SecretCipher: cipher,
 		TokenIssuer:  security.NewTokenIssuer(cfg.JWT.Secret, accessTokenTTL),
 
-		PromptManager: prompt.NewManager(filepath.Join("internal", "prompts")),
-		LLMManager:    BuildLLMManager(),
+		PromptManager:  prompt.NewManager(filepath.Join("internal", "prompts")),
+		LLMManager:     BuildLLMManager(),
+		MCPToolService: coremcp.NewService(coremcp.Options{}),
 	}
 	bindPostgresRepositories(svcCtx, db)
 

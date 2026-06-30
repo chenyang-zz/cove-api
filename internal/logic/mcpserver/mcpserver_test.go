@@ -2,9 +2,12 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
+	"time"
 
+	coremcp "github.com/boxify/api-go/internal/core/mcp"
 	"github.com/boxify/api-go/internal/infrastructure/security"
 	"github.com/boxify/api-go/internal/models"
 	"github.com/boxify/api-go/internal/repository"
@@ -94,6 +97,14 @@ func (r *fakeMCPServerRepository) UpdateFields(ctx context.Context, userID uuid.
 			existing.AuthConfig = row.AuthConfig
 		case "enabled":
 			existing.Enabled = row.Enabled
+		case "status":
+			existing.Status = row.Status
+		case "last_error":
+			existing.LastError = row.LastError
+		case "tools_cache":
+			existing.ToolsCache = row.ToolsCache
+		case "synced_at":
+			existing.SyncedAt = row.SyncedAt
 		}
 	}
 	return existing, nil
@@ -518,6 +529,144 @@ func TestToggleMCPServerPropagatesNotFound(t *testing.T) {
 	if xerr.From(err).Kind != xerr.KindNotFound {
 		t.Fatalf("ToggleMCPServer error = %v, want not found", err)
 	}
+}
+
+func TestSyncMCPServerUpdatesToolsAndClearsLastError(t *testing.T) {
+	// 验证同步成功会写入工具元信息、ready 状态，并清空上一次错误。
+	userID := uuid.New()
+	mcpID := uuid.New()
+	oldError := "previous error"
+	cipher := newTestCipher(t)
+	encryptedToken, err := cipher.Encrypt("sync-token")
+	if err != nil {
+		t.Fatalf("Encrypt token error = %v", err)
+	}
+	repo := newFakeMCPServerRepository(&models.MCPServer{
+		ID:         mcpID,
+		UserID:     userID,
+		Name:       "sync",
+		Transport:  string(request.StreamableHTTP),
+		Url:        "https://example.com/mcp",
+		AuthType:   string(request.Bearer),
+		AuthConfig: models.MCPAuthConfig{"token": encryptedToken},
+		Status:     "error",
+		LastError:  &oldError,
+		UpdatedAt:  time.Now(),
+	})
+	client := &recordingMCPToolClient{
+		tools: []coremcp.ToolInfo{{
+			Name:         "search",
+			Description:  "web search",
+			Title:        "Search",
+			InputSchema:  map[string]any{"type": "object"},
+			OutputSchema: map[string]any{"type": "string"},
+		}},
+	}
+	cache := &recordingMCPToolCache{}
+	logic := NewSyncMCPServerLogic(context.Background(), &svc.ServiceContext{
+		MCPServerRepo:  repo,
+		SecretCipher:   cipher,
+		MCPToolService: coremcp.NewService(coremcp.Options{Client: client, Cache: cache}),
+	})
+
+	out, err := logic.SyncMCPServer(userID, &request.UriMCPServerIDRequest{ID: mcpID.String()})
+	if err != nil {
+		t.Fatalf("SyncMCPServer error = %v", err)
+	}
+	if !reflect.DeepEqual(repo.fields, []string{"tools_cache", "synced_at", "status", "last_error"}) {
+		t.Fatalf("fields = %v, want sync update fields", repo.fields)
+	}
+	if repo.partial.Status != "ready" {
+		t.Fatalf("status = %q, want ready", repo.partial.Status)
+	}
+	if repo.partial.LastError == nil || *repo.partial.LastError != "" {
+		t.Fatalf("last_error = %#v, want empty string pointer", repo.partial.LastError)
+	}
+	if len(out.ToolsCache) != 1 || out.ToolsCache[0].Name != "search" {
+		t.Fatalf("ToolsCache = %#v, want synced tools", out.ToolsCache)
+	}
+	if len(repo.partial.ToolsCache) != 1 || repo.partial.ToolsCache[0].Name != "search" || repo.partial.ToolsCache[0].Description != "web search" {
+		t.Fatalf("patch ToolsCache = %#v, want name+description only", repo.partial.ToolsCache)
+	}
+	if cache.set == nil || len(cache.set.Tools) != 1 || cache.set.Tools[0].InputSchema == nil || cache.set.Tools[0].Title != "Search" {
+		t.Fatalf("runtime cache = %#v, want full tool info", cache.set)
+	}
+	if client.lastServer.AuthConfig["token"] != "sync-token" {
+		t.Fatalf("client token = %q, want decrypted token", client.lastServer.AuthConfig["token"])
+	}
+}
+
+func TestSyncMCPServerRecordsLastErrorAndKeepsToolsCache(t *testing.T) {
+	// 验证同步失败会记录 last_error，但不会覆盖数据库中已有的工具元信息。
+	userID := uuid.New()
+	mcpID := uuid.New()
+	oldTools := models.MCPMetas{{Name: "old", Description: "old desc"}}
+	repo := newFakeMCPServerRepository(&models.MCPServer{
+		ID:         mcpID,
+		UserID:     userID,
+		Name:       "sync",
+		Transport:  string(request.SSETransport),
+		Url:        "https://example.com/sse",
+		AuthType:   string(request.None),
+		AuthConfig: models.MCPAuthConfig{},
+		Status:     "unknown",
+		ToolsCache: oldTools,
+		UpdatedAt:  time.Now(),
+	})
+	client := &recordingMCPToolClient{err: errors.New("remote unavailable")}
+	logic := NewSyncMCPServerLogic(context.Background(), &svc.ServiceContext{
+		MCPServerRepo:  repo,
+		SecretCipher:   newTestCipher(t),
+		MCPToolService: coremcp.NewService(coremcp.Options{Client: client}),
+	})
+
+	_, err := logic.SyncMCPServer(userID, &request.UriMCPServerIDRequest{ID: mcpID.String()})
+	if err == nil {
+		t.Fatal("SyncMCPServer returned nil error, want remote error")
+	}
+	if !reflect.DeepEqual(repo.fields, []string{"status", "last_error"}) {
+		t.Fatalf("fields = %v, want only status and last_error", repo.fields)
+	}
+	if repo.partial.Status != "error" {
+		t.Fatalf("status = %q, want error", repo.partial.Status)
+	}
+	if repo.partial.LastError == nil || *repo.partial.LastError == "" {
+		t.Fatalf("last_error = %#v, want remote error message", repo.partial.LastError)
+	}
+	if !reflect.DeepEqual(repo.rows[mcpID].ToolsCache, oldTools) {
+		t.Fatalf("tools_cache = %#v, want old tools %#v", repo.rows[mcpID].ToolsCache, oldTools)
+	}
+}
+
+type recordingMCPToolClient struct {
+	tools      []coremcp.ToolInfo
+	err        error
+	lastServer coremcp.ServerConfig
+}
+
+func (c *recordingMCPToolClient) ListTools(ctx context.Context, server coremcp.ServerConfig) ([]coremcp.ToolInfo, error) {
+	c.lastServer = server
+	if c.err != nil {
+		return nil, c.err
+	}
+	return c.tools, nil
+}
+
+type recordingMCPToolCache struct {
+	set *coremcp.CacheEntry
+}
+
+func (c *recordingMCPToolCache) Get(ctx context.Context, key string) (coremcp.CacheEntry, bool, error) {
+	return coremcp.CacheEntry{}, false, nil
+}
+
+func (c *recordingMCPToolCache) Set(ctx context.Context, key string, entry coremcp.CacheEntry) error {
+	c.set = &entry
+	return nil
+}
+
+func (c *recordingMCPToolCache) Valid(server coremcp.ServerConfig, entry coremcp.CacheEntry) bool {
+	return false
 }
 
 func newTestCipher(t *testing.T) *security.SecretCipher {

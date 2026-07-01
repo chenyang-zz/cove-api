@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/boxify/api-go/internal/core/valuex"
 	"golang.org/x/net/html"
 )
 
@@ -51,7 +52,7 @@ func (e *HTMLExtractor) Extract(ctx context.Context, page Page) (*Output, error)
 	if title == "" {
 		title = page.URL
 	}
-	return &Output{Title: truncateRunes(title, e.TitleMaxRunes), Content: content, URL: page.URL}, nil
+	return &Output{Title: valuex.TruncateRunesWithSuffix(title, e.TitleMaxRunes, "..."), Content: content, URL: page.URL}, nil
 }
 
 // firstTitle 提取网页标题
@@ -104,16 +105,4 @@ func readableText(root *html.Node) string {
 // normalizeSpace 规范化空格
 func normalizeSpace(text string) string {
 	return strings.Join(strings.Fields(text), " ")
-}
-
-// truncateRunes 截断字节
-func truncateRunes(text string, maxRunes int) string {
-	runes := []rune(strings.TrimSpace(text))
-	if maxRunes <= 0 {
-		return ""
-	}
-	if len(runes) <= maxRunes {
-		return string(runes)
-	}
-	return string(runes[:maxRunes]) + "..."
 }

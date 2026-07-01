@@ -51,11 +51,23 @@ internal/
 ├── config/          # 配置加载
 ├── core/            # 核心业务逻辑
 │   ├── agent/       # Agent 编排
+│   ├── id/          # ID 生成
+│   ├── jsonx/       # JSON 解析工具
 │   ├── llm/         # LLM 抽象层
-│   ├── rag/         # RAG 引擎 (chunker + search)
-│   ├── memory/      # 记忆管理
 │   ├── mcp/         # MCP 协议集成
-│   └── ...
+│   ├── memory/      # 记忆管理
+│   ├── prompt/      # 通用提示词模板渲染
+│   ├── rag/         # RAG 引擎
+│   │   ├── chunker/       # 文档分块
+│   │   ├── classifier/    # LLM 内容分类/打标签
+│   │   ├── documentparse/ # 文档解析
+│   │   ├── imagecompress/ # 图片压缩
+│   │   ├── imagedescribe/ # LLM 图片描述
+│   │   ├── prompt/        # RAG 提示词模板 (embed)
+│   │   ├── search/        # 混合检索
+│   │   └── webcrawl/      # 网页爬取 (含 SSRF 防护)
+│   ├── security/    # 安全
+│   └── valuex/      # 通用值转换工具
 ├── domain/          # 领域类型
 ├── infrastructure/  # 基础设施适配器
 ├── logic/           # 业务逻辑层
@@ -181,12 +193,19 @@ go run ./cmd/scheduler
 
 文档处理流程：
 
-1. **分块** — 基于 token 的分层分块 (child/parent)
-2. **嵌入** — 通过 LLM 提供者生成向量
-3. **索引** — 写入 Elasticsearch
-4. **检索** — 混合搜索 (向量 + 关键词)
-5. **重排序** — 结果排序优化
-6. **引用** — 生成带引用的回答
+1. **爬取** — 网页爬取 (`webcrawl/`)：获取页面 HTML，含重试、重定向追踪、URL 安全校验（防 SSRF）
+2. **解析** — 文档解析 (`documentparse/`)：提取结构化内容
+3. **图片描述** — 图片理解 (`imagedescribe/`)：通过 LLM 生成图片描述、OCR 文字、物体与场景标签
+4. **压缩** — 图片预处理 (`imagecompress/`)：降低图片体积以适配模型输入
+5. **分块** — 基于 token 的分层分块 (`chunker/`, child/parent)
+6. **嵌入** — 通过 LLM 提供者生成向量
+7. **索引** — 写入 Elasticsearch
+8. **检索** — 混合搜索 (`search/`, 向量 + 关键词)
+9. **重排序** — 结果排序优化
+10. **分类** — LLM 自动打标签 (`classifier/`)：为文档/内容生成分类标签，失败时降级不阻断主流程
+11. **引用** — 生成带引用的回答
+
+> 所有提示词模板统一通过 `prompt/` 包渲染，业务侧模板嵌入在 `rag/prompt/` 中。
 
 ## 项目背景
 

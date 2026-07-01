@@ -53,3 +53,29 @@ func TestFloatConvertsNumericValues(t *testing.T) {
 		}
 	}
 }
+
+func TestTruncateRunesTrimsAndKeepsRuneBoundary(t *testing.T) {
+	// 验证点：TruncateRunes 按 rune 截断并去掉首尾空白，不追加省略号，适合标签和 prompt 内容裁剪。
+	if got := TruncateRunes("  你好世界  ", 2); got != "你好" {
+		t.Fatalf("TruncateRunes = %q, want 你好", got)
+	}
+	if got := TruncateRunes("hello", 0); got != "" {
+		t.Fatalf("TruncateRunes max 0 = %q, want empty", got)
+	}
+	if got := TruncateRunes("hi", 10); got != "hi" {
+		t.Fatalf("TruncateRunes short = %q, want hi", got)
+	}
+}
+
+func TestTruncateRunesWithSuffixAddsSuffixOnlyWhenTruncated(t *testing.T) {
+	// 验证点：TruncateRunesWithSuffix 只在发生截断时追加后缀，适合展示标题裁剪。
+	if got := TruncateRunesWithSuffix("你好世界", 2, "..."); got != "你好..." {
+		t.Fatalf("TruncateRunesWithSuffix = %q, want 你好...", got)
+	}
+	if got := TruncateRunesWithSuffix("hi", 10, "..."); got != "hi" {
+		t.Fatalf("TruncateRunesWithSuffix short = %q, want hi", got)
+	}
+	if got := TruncateRunesWithSuffix("hello", 0, "..."); got != "" {
+		t.Fatalf("TruncateRunesWithSuffix max 0 = %q, want empty", got)
+	}
+}

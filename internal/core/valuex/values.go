@@ -1,6 +1,9 @@
 package valuex
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 func String(value any) string {
 	switch v := value.(type) {
@@ -53,4 +56,28 @@ func Float(value any) float64 {
 	default:
 		return 0
 	}
+}
+
+func TruncateRunes(text string, maxRunes int) string {
+	text = strings.TrimSpace(text)
+	if maxRunes <= 0 {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= maxRunes {
+		return text
+	}
+	return string(runes[:maxRunes])
+}
+
+func TruncateRunesWithSuffix(text string, maxRunes int, suffix string) string {
+	trimmed := strings.TrimSpace(text)
+	truncated := TruncateRunes(trimmed, maxRunes)
+	if maxRunes <= 0 {
+		return ""
+	}
+	if len([]rune(trimmed)) <= maxRunes {
+		return truncated
+	}
+	return truncated + suffix
 }

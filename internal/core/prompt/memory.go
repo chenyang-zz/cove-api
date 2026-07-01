@@ -4,6 +4,10 @@
  * @File   : memory.go
  **/
 
+// Package prompt 封装 memory 相关提示词入口。
+//
+// 本文件只负责把记忆抽取、三元组抽取、实体去重和社区摘要请求映射到对应模板，
+// 不直接处理模板解析细节。
 package prompt
 
 import "fmt"

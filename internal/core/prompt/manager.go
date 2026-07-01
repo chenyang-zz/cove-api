@@ -4,17 +4,15 @@
  * @File   : manager.go
  **/
 
+// Package prompt 保留旧版目录式提示词管理器。
+//
+// 本文件兼容 memory/agent 对磁盘模板目录的调用方式。新的通用模板能力在
+// template.go、reader.go 和 renderer.go 中实现，Manager 只保留既有入口。
 package prompt
 
 import (
-	"bytes"
 	"fmt"
-	"html/template"
-	"os"
 	"path/filepath"
-
-	"github.com/Masterminds/sprig/v3"
-	"github.com/boxify/api-go/internal/xerr"
 )
 
 type Manager struct {
@@ -38,21 +36,5 @@ func NewManager(root string) *Manager {
 
 func (m *Manager) Render(name string, data any) (string, error) {
 	path := filepath.Join(m.root, fmt.Sprintf("%s.tmpl", name))
-
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return "", xerr.Wrapf(err, "read prompt %s failed: %v", path, err)
-	}
-
-	tpl, err := template.New(name).Funcs(sprig.TxtFuncMap()).Parse(string(content))
-	if err != nil {
-		return "", xerr.Wrapf(err, "parse prompt %s failed: %v", name, err)
-	}
-
-	var buf bytes.Buffer
-	if err := tpl.Execute(&buf, data); err != nil {
-		return "", xerr.Wrapf(err, "render prompt %s failed: %v", name, err)
-	}
-
-	return buf.String(), nil
+	return renderFile(path, data)
 }

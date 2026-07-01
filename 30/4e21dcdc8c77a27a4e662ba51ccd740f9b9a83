@@ -1,0 +1,38 @@
+internal/core/rag/classifier/classifier.go
+  s_a5f282227fb606::t_088306a8e4d3c6 9,47-51,53,61,71-73
+  h_e1f1392360ad67 1-7,10-25,27-46,52,54-60,65-68,74-89,91-115
+  s_a5f282227fb606::t_9f92423860882b 26,62-64
+  s_a5f282227fb606::t_ab9941ac16689c 69,90
+  s_a5f282227fb606::t_95aa22db59b7f2 8,70
+internal/core/rag/classifier/classifier_test.go
+  s_a5f282227fb606::t_f8e8590360be74 1-39,42-63,83-130
+  s_a5f282227fb606::t_4ae537d47d272c 40-41,64-82
+internal/core/rag/classifier/options.go
+  s_a5f282227fb606::t_83a813c56303bd 5,15
+  s_a5f282227fb606::t_9f92423860882b 23,32
+  s_a5f282227fb606::t_e45c6651e8998b 1-4,6-13,16-22,24-31,33-71
+  s_a5f282227fb606::t_088306a8e4d3c6 14
+internal/core/rag/classifier/types.go
+  s_a5f282227fb606::t_b1adb41a01d6e7 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "304e21dcdc8c77a27a4e662ba51ccd740f9b9a83",
+  "prompts": {},
+  "humans": {
+    "h_e1f1392360ad67": {
+      "author": "chenyang <904852749@qq.com>"
+    }
+  },
+  "sessions": {
+    "s_a5f282227fb606": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f13c4-cb77-7061-8d78-bfdb2b2034a3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

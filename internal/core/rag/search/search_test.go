@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+
+	"github.com/boxify/api-go/internal/core/valuex"
 )
 
 type fakeESClient struct {
@@ -71,8 +73,8 @@ type sourceMeta struct {
 
 func decodeSourceMeta(src map[string]any) (sourceMeta, error) {
 	return sourceMeta{
-		DocName: stringValue(src["doc_name"]),
-		KBID:    stringValue(src["kb_id"]),
+		DocName: valuex.String(src["doc_name"]),
+		KBID:    valuex.String(src["kb_id"]),
 	}, nil
 }
 

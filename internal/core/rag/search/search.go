@@ -2,11 +2,12 @@ package search
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"math"
 	"sort"
 	"strings"
+
+	"github.com/boxify/api-go/internal/core/valuex"
 )
 
 type Searcher[T any] struct {
@@ -118,7 +119,7 @@ func (s *Searcher[T]) Search(ctx context.Context, query string, opts ...RequestO
 func (s *Searcher[T]) rerank(ctx context.Context, query string, candidateIDs []string, hits map[string]map[string]any, topK int) ([]string, error) {
 	docs := make([]string, 0, len(candidateIDs))
 	for _, id := range candidateIDs {
-		docs = append(docs, stringValue(hits[id]["content"]))
+		docs = append(docs, valuex.String(hits[id]["content"]))
 	}
 	reranked, err := s.Reranker.Rerank(ctx, query, docs, topK)
 	if err != nil {
@@ -146,7 +147,7 @@ func (s *Searcher[T]) resultsForIDs(ctx context.Context, ids []string, hits map[
 		src := hits[id]
 		content, err := s.resolveParentContent(ctx, src)
 		if err != nil {
-			content = stringValue(src["content"])
+			content = valuex.String(src["content"])
 		}
 		var source T
 		if s.sourceDecoder != nil {
@@ -167,9 +168,9 @@ func (s *Searcher[T]) resultsForIDs(ctx context.Context, ids []string, hits map[
 
 // resolveParentContent 查询 parent chunk 内容；业务隔离过滤由外层调用方负责提供。
 func (s *Searcher[T]) resolveParentContent(ctx context.Context, src map[string]any) (string, error) {
-	parentID := stringValue(src["parent_id"])
+	parentID := valuex.String(src["parent_id"])
 	if parentID == "" {
-		return stringValue(src["content"]), nil
+		return valuex.String(src["content"]), nil
 	}
 	resp, err := s.es.Search(ctx, s.Index, map[string]any{
 		"size": 1,
@@ -186,12 +187,12 @@ func (s *Searcher[T]) resolveParentContent(ctx context.Context, src map[string]a
 	}
 	hits := responseHits(resp)
 	if len(hits) == 0 {
-		return stringValue(src["content"]), nil
+		return valuex.String(src["content"]), nil
 	}
 	parentSrc, _ := hits[0]["_source"].(map[string]any)
-	content := stringValue(parentSrc["content"])
+	content := valuex.String(parentSrc["content"])
 	if content == "" {
-		return stringValue(src["content"]), nil
+		return valuex.String(src["content"]), nil
 	}
 	return content, nil
 }
@@ -329,7 +330,7 @@ func rankedIDs(scores map[string]float64, limit int) []string {
 // collectHits 收集命中结果。
 func collectHits(resp map[string]any, hits map[string]map[string]any, scores map[string]float64) {
 	for _, hit := range responseHits(resp) {
-		id := stringValue(hit["_id"])
+		id := valuex.String(hit["_id"])
 		if id == "" {
 			continue
 		}
@@ -338,7 +339,7 @@ func collectHits(resp map[string]any, hits map[string]map[string]any, scores map
 			src = map[string]any{}
 		}
 		hits[id] = src
-		scores[id] = floatValue(hit["_score"])
+		scores[id] = valuex.Float(hit["_score"])
 	}
 }
 
@@ -354,35 +355,6 @@ func responseHits(resp map[string]any) []map[string]any {
 		}
 	}
 	return out
-}
-
-func stringValue(value any) string {
-	switch v := value.(type) {
-	case string:
-		return v
-	case json.Number:
-		return v.String()
-	default:
-		return ""
-	}
-}
-
-func floatValue(value any) float64 {
-	switch v := value.(type) {
-	case float64:
-		return v
-	case float32:
-		return float64(v)
-	case int:
-		return float64(v)
-	case int64:
-		return float64(v)
-	case json.Number:
-		out, _ := v.Float64()
-		return out
-	default:
-		return 0
-	}
 }
 
 func round4(value float64) float64 {

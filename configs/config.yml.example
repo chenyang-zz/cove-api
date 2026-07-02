@@ -57,7 +57,8 @@ llm:
 
 
 rag:
-    embedding_dims: 1024
+    embedding_dim: 1024
+    embedding_batch_size: 10
 
 memory:
     name_sim_gate: 0.8

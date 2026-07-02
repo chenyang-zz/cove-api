@@ -158,10 +158,31 @@ func (c *openaiLLMClient) chatParams(messages []*corellm.Message, opts ...corell
 	return params
 }
 
-func (c *openaiLLMClient) Embed(ctx context.Context, texts []string, dimensions int) ([][]float64, error) {
+func (c *openaiLLMClient) Embed(ctx context.Context, texts []string, dimensions int, opts ...corellm.EmbeddingOption) ([][]float64, error) {
 	if err := c.validateEmbeddingConfig(); err != nil {
 		return nil, err
 	}
+	if len(texts) == 0 {
+		return nil, nil
+	}
+	embeddingOpts := corellm.NewEmbeddingOptions(opts...)
+	batchSize := len(texts)
+	if embeddingOpts.BatchSize > 0 {
+		batchSize = embeddingOpts.BatchSize
+	}
+	vecs := make([][]float64, 0, len(texts))
+	for start := 0; start < len(texts); start += batchSize {
+		end := min(start+batchSize, len(texts))
+		batchVecs, err := c.embedBatch(ctx, texts[start:end], dimensions)
+		if err != nil {
+			return nil, err
+		}
+		vecs = append(vecs, batchVecs...)
+	}
+	return vecs, nil
+}
+
+func (c *openaiLLMClient) embedBatch(ctx context.Context, texts []string, dimensions int) ([][]float64, error) {
 	params := openai.EmbeddingNewParams{
 		Model: openai.EmbeddingModel(c.embeddingModel),
 		Input: openai.EmbeddingNewParamsInputUnion{OfArrayOfStrings: texts},

@@ -134,7 +134,7 @@ func (c *anthropicLLMClient) Stream(ctx context.Context, messages []*corellm.Mes
 	return ch, nil
 }
 
-func (c *anthropicLLMClient) Embed(context.Context, []string, int) ([][]float64, error) {
+func (c *anthropicLLMClient) Embed(context.Context, []string, int, ...corellm.EmbeddingOption) ([][]float64, error) {
 	return nil, xerr.BadRequest("Anthropic 当前不支持向量模型调用")
 }
 

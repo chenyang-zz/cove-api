@@ -179,7 +179,7 @@ func (f *fakeLLMClient) Stream(ctx context.Context, messages []*corellm.Message,
 	return ch, nil
 }
 
-func (f *fakeLLMClient) Embed(ctx context.Context, texts []string, dimensions int) ([][]float64, error) {
+func (f *fakeLLMClient) Embed(ctx context.Context, texts []string, dimensions int, opts ...corellm.EmbeddingOption) ([][]float64, error) {
 	return nil, nil
 }
 

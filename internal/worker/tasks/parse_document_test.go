@@ -199,6 +199,7 @@ type fakeLLMClient struct {
 	err          error
 	invokeAnswer string
 	invokeErr    error
+	embedOptions *[]corellm.EmbeddingOptions
 }
 
 func (c fakeLLMClient) Invoke(ctx context.Context, messages []*corellm.Message, opts ...corellm.ModelCallOption) (string, error) {
@@ -214,9 +215,12 @@ func (c fakeLLMClient) Stream(ctx context.Context, messages []*corellm.Message, 
 	return ch, nil
 }
 
-func (c fakeLLMClient) Embed(ctx context.Context, texts []string, dimensions int) ([][]float64, error) {
+func (c fakeLLMClient) Embed(ctx context.Context, texts []string, dimensions int, opts ...corellm.EmbeddingOption) ([][]float64, error) {
 	if c.err != nil {
 		return nil, c.err
+	}
+	if c.embedOptions != nil {
+		*c.embedOptions = append(*c.embedOptions, corellm.NewEmbeddingOptions(opts...))
 	}
 	out := make([][]float64, 0, len(texts))
 	for range texts {
@@ -327,11 +331,12 @@ func TestHandleParseDocumentProcessesTextDocument(t *testing.T) {
 		t.Fatalf("Encrypt API key error = %v", err)
 	}
 	var llmConfigs []corellm.ModelConfig
+	var embeddingOptions []corellm.EmbeddingOptions
 	docRepo := newFakeDocumentRepository(row)
 	docRepo.events = &events
 	tagRepo := &fakeTagRepository{events: &events}
 	handler := NewParseDocumentTask(&svc.ServiceContext{
-		Config:            config.Config{Rag: config.RagConfig{EmbeddingDim: 3, ChunkIndex: "boxify_chunks"}},
+		Config:            config.Config{Rag: config.RagConfig{EmbeddingDim: 3, EmbeddingBatchSize: 4, ChunkIndex: "boxify_chunks"}},
 		DocumentRepo:      docRepo,
 		TagRepo:           tagRepo,
 		ModelConfigRepo:   &fakeModelConfigRepository{rows: []*models.ModelConfig{{UserID: userID, Type: string(domain.EmbeddingModelType), Provider: "fake", ModelName: "db-embed", APIKeyEncrypted: encryptedAPIKey, BaseURL: "https://llm.example", IsDefault: true}, {UserID: userID, Type: string(domain.ChatModelType), Provider: "fake", ModelName: "db-chat", APIKeyEncrypted: encryptedAPIKey, BaseURL: "https://llm.example", IsDefault: true}}},
@@ -342,7 +347,7 @@ func TestHandleParseDocumentProcessesTextDocument(t *testing.T) {
 		RAGClassifier:     ragclassifier.NewClassifier(),
 		RAGDocumentParser: ragparser.NewParser(),
 		RAGChunker:        ragchunker.NewChunker(ragchunker.WithParentChunkTokens(1200)),
-		LLMManager:        newFakeLLMManager(fakeLLMClient{invokeAnswer: `["自动","手动"]`}, &llmConfigs),
+		LLMManager:        newFakeLLMManager(fakeLLMClient{invokeAnswer: `["自动","手动"]`, embedOptions: &embeddingOptions}, &llmConfigs),
 	})
 	task, err := domain.NewParseDocumentTask(userID, documentID)
 	if err != nil {
@@ -370,6 +375,9 @@ func TestHandleParseDocumentProcessesTextDocument(t *testing.T) {
 	}
 	if len(llmConfigs) < 2 || llmConfigs[0].Provider != "fake" || llmConfigs[0].Model != "db-embed" || llmConfigs[0].EmbeddingModel != "db-embed" || llmConfigs[0].APIKey != "db-key" || llmConfigs[0].BaseURL != "https://llm.example" || llmConfigs[1].Model != "db-chat" {
 		t.Fatalf("LLM config = %#v, want database embedding model config", llmConfigs)
+	}
+	if len(embeddingOptions) != 1 || embeddingOptions[0].BatchSize != 4 {
+		t.Fatalf("embedding options = %#v, want batch size 4 from rag config", embeddingOptions)
 	}
 	encodedUpdate, _ := json.Marshal(updateTagsBody)
 	updateText := string(encodedUpdate)

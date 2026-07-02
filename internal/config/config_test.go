@@ -9,7 +9,7 @@ import (
 )
 
 func TestLoadFileUsesDefaultsWhenYAMLIsMissing(t *testing.T) {
-	// 验证缺省配置包含 RAG chunk 索引默认值，便于文档检索直接初始化 ES。
+	// 验证缺省配置包含 RAG chunk 索引、向量维度和 embedding 批次大小默认值，便于文档解析直接使用。
 	cfg, err := config.LoadFile(filepath.Join(t.TempDir(), "missing.yml"))
 	if err != nil {
 		t.Fatalf("LoadFile error = %v", err)
@@ -24,13 +24,13 @@ func TestLoadFileUsesDefaultsWhenYAMLIsMissing(t *testing.T) {
 	if cfg.Redis.Addr != "localhost:6379" {
 		t.Fatalf("redis addr = %q", cfg.Redis.Addr)
 	}
-	if cfg.Rag.ChunkIndex != "cove_chunks" || cfg.Rag.EmbeddingDim != 1024 {
-		t.Fatalf("rag defaults = %#v, want cove_chunks/1024", cfg.Rag)
+	if cfg.Rag.ChunkIndex != "cove_chunks" || cfg.Rag.EmbeddingDim != 1024 || cfg.Rag.EmbeddingBatchSize != 10 {
+		t.Fatalf("rag defaults = %#v, want cove_chunks/1024/batch=10", cfg.Rag)
 	}
 }
 
 func TestLoadFileReadsNestedYAML(t *testing.T) {
-	// 验证 YAML 中的 RAG 配置可以覆盖默认 chunk 索引和向量维度。
+	// 验证 YAML 中的 RAG 配置可以覆盖默认 chunk 索引、向量维度和 embedding 批次大小。
 	path := writeConfig(t, `
 app:
   env: production
@@ -80,6 +80,7 @@ llm:
   api_key: sk-yaml
 rag:
   embedding_dim: 1536
+  embedding_batch_size: 8
   chunk_index: yaml_chunks
 `)
 
@@ -115,13 +116,13 @@ rag:
 	if !cfg.Docs.Enabled || cfg.Docs.Path != "/docs" || cfg.Docs.SpecPath != "/docs/openapi.json" || cfg.Docs.Title != "YAML API" || cfg.Docs.Version != "1.2.3" {
 		t.Fatalf("cfg docs = %#v", cfg.Docs)
 	}
-	if cfg.Rag.EmbeddingDim != 1536 || cfg.Rag.ChunkIndex != "yaml_chunks" {
+	if cfg.Rag.EmbeddingDim != 1536 || cfg.Rag.EmbeddingBatchSize != 8 || cfg.Rag.ChunkIndex != "yaml_chunks" {
 		t.Fatalf("cfg rag = %#v", cfg.Rag)
 	}
 }
 
 func TestLoadFileEnvOverridesYAML(t *testing.T) {
-	// 验证环境变量可以覆盖 RAG chunk 索引，便于不同环境使用不同 ES 索引。
+	// 验证环境变量可以覆盖 RAG chunk 索引和 embedding 批次大小，便于不同模型供应商使用不同限制。
 	t.Setenv("APP_ENV", "test")
 	t.Setenv("APP_HOST", "localhost")
 	t.Setenv("APP_PORT", "9100")
@@ -158,6 +159,7 @@ func TestLoadFileEnvOverridesYAML(t *testing.T) {
 	t.Setenv("LLM_BASE_URL", "https://env.example/v1")
 	t.Setenv("LLM_API_KEY", "sk-env")
 	t.Setenv("RAG_CHUNK_INDEX", "env_chunks")
+	t.Setenv("RAG_EMBEDDING_BATCH_SIZE", "6")
 
 	path := writeConfig(t, `
 app:
@@ -216,7 +218,7 @@ llm:
 	if !cfg.Docs.Enabled || cfg.Docs.Path != "/env/docs" || cfg.Docs.SpecPath != "/env/docs/openapi.json" || cfg.Docs.Title != "Env API" || cfg.Docs.Version != "9.9.9" {
 		t.Fatalf("env override docs failed: %#v", cfg.Docs)
 	}
-	if cfg.Rag.ChunkIndex != "env_chunks" {
+	if cfg.Rag.ChunkIndex != "env_chunks" || cfg.Rag.EmbeddingBatchSize != 6 {
 		t.Fatalf("env override rag failed: %#v", cfg.Rag)
 	}
 }

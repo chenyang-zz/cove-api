@@ -3,6 +3,7 @@ package llm_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -221,5 +222,69 @@ func TestOpenAIClientEmbedUsesEmbeddingEndpointAndDimensions(t *testing.T) {
 	}
 	if len(one) != 2 {
 		t.Fatalf("one = %#v", one)
+	}
+}
+
+func TestOpenAIClientEmbedSplitsRequestsByBatchSize(t *testing.T) {
+	// 验证 OpenAI-compatible embedding 会按传入批次大小拆分请求，并保持向量顺序与输入文本一致。
+	var batchSizes []int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/embeddings" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		var requestBody map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		inputs, ok := requestBody["input"].([]any)
+		if !ok {
+			t.Fatalf("request input = %#v, want array", requestBody["input"])
+		}
+		batchSizes = append(batchSizes, len(inputs))
+		resp := struct {
+			Data []struct {
+				Embedding []float64 `json:"embedding"`
+			} `json:"data"`
+		}{Data: make([]struct {
+			Embedding []float64 `json:"embedding"`
+		}, 0, len(inputs))}
+		for _, input := range inputs {
+			text, ok := input.(string)
+			if !ok {
+				t.Fatalf("input item = %#v, want string", input)
+			}
+			resp.Data = append(resp.Data, struct {
+				Embedding []float64 `json:"embedding"`
+			}{Embedding: []float64{float64(len(text))}})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Fatalf("encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	texts := make([]string, 0, 23)
+	for i := 0; i < 23; i++ {
+		texts = append(texts, strings.Repeat("x", i+1))
+	}
+	client := infra.NewOpenaiLLMClient("sk-test", "chat-model",
+		infra.WithBaseURL(server.URL+"/v1"),
+		infra.WithEmbeddingModel("embed-model"),
+	)
+	vecs, err := client.Embed(context.Background(), texts, 1024, corellm.WithEmbeddingBatchSize(10))
+	if err != nil {
+		t.Fatalf("Embed error = %v", err)
+	}
+	if got := strings.Trim(strings.Join(strings.Fields(fmt.Sprint(batchSizes)), ","), "[]"); got != "10,10,3" {
+		t.Fatalf("batch sizes = %v, want [10 10 3]", batchSizes)
+	}
+	if len(vecs) != len(texts) {
+		t.Fatalf("vectors len = %d, want %d", len(vecs), len(texts))
+	}
+	for i, vec := range vecs {
+		if len(vec) != 1 || vec[0] != float64(i+1) {
+			t.Fatalf("vector[%d] = %#v, want [%d]", i, vec, i+1)
+		}
 	}
 }

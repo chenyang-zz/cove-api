@@ -127,7 +127,7 @@ func (h *ParseDocumentTask) Handle(ctx context.Context, task *domain.Task) error
 		_ = h.markParseFailed(ctx, doc, err)
 		return nil
 	}
-	vectors, err := llmClient.Embed(ctx, texts, h.svcCtx.Config.Rag.EmbeddingDim)
+	vectors, err := llmClient.Embed(ctx, texts, h.svcCtx.Config.Rag.EmbeddingDim, corellm.WithEmbeddingBatchSize(h.svcCtx.Config.Rag.EmbeddingBatchSize))
 	if err != nil {
 		_ = h.markParseFailed(ctx, doc, err)
 		return nil

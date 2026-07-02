@@ -291,7 +291,7 @@ func (c fakeSearchLLMClient) Stream(ctx context.Context, messages []*corellm.Mes
 	return ch, nil
 }
 
-func (c fakeSearchLLMClient) Embed(ctx context.Context, texts []string, dimensions int) ([][]float64, error) {
+func (c fakeSearchLLMClient) Embed(ctx context.Context, texts []string, dimensions int, opts ...corellm.EmbeddingOption) ([][]float64, error) {
 	out := make([][]float64, 0, len(texts))
 	for range texts {
 		out = append(out, []float64{0.1, 0.2, 0.3})

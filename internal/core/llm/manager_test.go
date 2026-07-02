@@ -28,7 +28,7 @@ func (stubClient) Stream(context.Context, []*Message, ...ModelCallOption) (<-cha
 	return ch, nil
 }
 
-func (stubClient) Embed(context.Context, []string, int) ([][]float64, error) {
+func (stubClient) Embed(context.Context, []string, int, ...EmbeddingOption) ([][]float64, error) {
 	return nil, nil
 }
 

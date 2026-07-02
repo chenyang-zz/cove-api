@@ -1,0 +1,71 @@
+internal/core/rag/classifier/types.go
+  s_a5f282227fb606::t_1f154330a5a007 5-7,12-14,20-22
+internal/core/rag/chunker/doc.go
+  s_a5f282227fb606::t_804d4c636ef736 1-5
+internal/core/rag/imagedescribe/options.go
+  s_a5f282227fb606::t_c712609a870bb0 16,24,27,36,45,54,63,68
+internal/core/rag/chunker/types.go
+  s_a5f282227fb606::t_f505b488466d5e 3-5
+internal/core/rag/webcrawl/types.go
+  s_a5f282227fb606::t_8cca5282bbdecd 9,14,21,27,32,37-39,44,51
+internal/core/rag/imagecompress/doc.go
+  s_a5f282227fb606::t_804d4c636ef736 1-5
+internal/core/rag/imagecompress/options.go
+  s_a5f282227fb606::t_9f769fda65a869 10-12,19,22,31,40-42
+internal/core/rag/imagedescribe/describe.go
+  s_a5f282227fb606::t_c712609a870bb0 19-21,27-29,48-51
+internal/core/rag/classifier/classifier.go
+  s_a5f282227fb606::t_1f154330a5a007 13-15,21-23,44-47,69,85,111
+internal/core/rag/imagedescribe/types.go
+  s_a5f282227fb606::t_c712609a870bb0 9-11,16,21-23,29-31
+internal/core/rag/search/types.go
+  s_a5f282227fb606::t_6c247b8c689590 7,12,17-19,24-26,29-31,34,52,55,64,73,80,87-89
+internal/core/rag/chunker/chunker.go
+  s_a5f282227fb606::t_f505b488466d5e 9-11,17-20,44-46,53,70,76-78,86,98,121,137,148-149
+internal/core/rag/webcrawl/extractor.go
+  s_a5f282227fb606::t_8cca5282bbdecd 15,20,23-25,38-40,49-51,68,91,115
+internal/core/rag/webcrawl/doc.go
+  s_a5f282227fb606::t_804d4c636ef736 1-5
+internal/core/rag/imagedescribe/doc.go
+  s_a5f282227fb606::t_804d4c636ef736 1-5
+internal/core/rag/imagecompress/compressor.go
+  s_a5f282227fb606::t_9f769fda65a869 16-18,23-25,42-45,58,78-80
+internal/core/rag/classifier/options.go
+  s_a5f282227fb606::t_1f154330a5a007 17-19,29,32-34,44,53,62,71,80
+internal/core/rag/webcrawl/guard.go
+  s_a5f282227fb606::t_cf1b4a266e1acf 52
+  s_a5f282227fb606::t_8cca5282bbdecd 11,16,25-27,38,47,67,88
+internal/core/rag/imagecompress/types.go
+  s_a5f282227fb606::t_cf1b4a266e1acf 13
+  s_a5f282227fb606::t_9f769fda65a869 3-5,11-12,14
+internal/core/rag/webcrawl/options.go
+  s_a5f282227fb606::t_8cca5282bbdecd 14,24,27,36,45,54,63,72,81
+internal/core/rag/webcrawl/crawler.go
+  s_a5f282227fb606::t_8cca5282bbdecd 12-14,19-21,43-45,63,73,96,104
+internal/core/rag/search/search.go
+  s_a5f282227fb606::t_6c247b8c689590 13-16,24-26,29-31,54,74,109,237-239
+internal/core/rag/classifier/doc.go
+  s_a5f282227fb606::t_804d4c636ef736 1-5
+internal/core/rag/search/doc.go
+  s_a5f282227fb606::t_804d4c636ef736 1-5
+internal/core/rag/chunker/options.go
+  s_a5f282227fb606::t_f505b488466d5e 14-17,26,29,36,43,50,57
+internal/core/rag/search/options.go
+  s_a5f282227fb606::t_6c247b8c689590 12-14,27,30,39,48,57,64,71-73,82,89,98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "20e8a96a863c3c93fda3a3cb6dacf33436d81cab",
+  "prompts": {},
+  "sessions": {
+    "s_a5f282227fb606": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f13c4-cb77-7061-8d78-bfdb2b2034a3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

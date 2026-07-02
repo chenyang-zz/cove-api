@@ -9,6 +9,7 @@ const (
 	defaultTimeout      = 20 * time.Second
 	defaultMaxRedirects = 5
 	defaultRetryCount   = 1
+	defaultMaxBodyBytes = 50 * 1024 * 1024
 )
 
 // Options 定义 Crawler 的长期配置。
@@ -19,6 +20,7 @@ type Options struct {
 	Timeout      time.Duration
 	MaxRedirects int
 	RetryCount   int
+	MaxBodyBytes int64
 }
 
 // Option 修改 Crawler 的长期配置。
@@ -74,6 +76,17 @@ func WithRetryCount(retryCount int) Option {
 	return func(opts *Options) {
 		if retryCount >= 0 {
 			opts.RetryCount = retryCount
+		}
+	}
+}
+
+// WithMaxBodyBytes 设置网页响应体最大读取字节数。
+//
+// maxBytes 小于等于 0 时保留默认上限。
+func WithMaxBodyBytes(maxBytes int64) Option {
+	return func(opts *Options) {
+		if maxBytes > 0 {
+			opts.MaxBodyBytes = maxBytes
 		}
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +19,7 @@ import (
 	corellm "github.com/boxify/api-go/internal/core/llm"
 	ragchunker "github.com/boxify/api-go/internal/core/rag/chunker"
 	ragsearch "github.com/boxify/api-go/internal/core/rag/search"
+	"github.com/boxify/api-go/internal/core/rag/webcrawl"
 	"github.com/boxify/api-go/internal/domain"
 	infraes "github.com/boxify/api-go/internal/infrastructure/db/es"
 	"github.com/boxify/api-go/internal/infrastructure/queue"
@@ -256,6 +259,29 @@ type fakeDocumentTaskProducer struct {
 	tasks    []*domain.Task
 	parseErr error
 	closed   bool
+}
+
+type fakeURLImportHTTPClient struct {
+	body string
+	err  error
+}
+
+func (c fakeURLImportHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(c.body)),
+		Header:     make(http.Header),
+		Request:    req,
+	}, nil
+}
+
+type fakeURLImportGuard struct{}
+
+func (fakeURLImportGuard) Validate(ctx context.Context, rawURL string) error {
+	return nil
 }
 
 func (p *fakeDocumentTaskProducer) Enqueue(ctx context.Context, task *domain.Task, opts ...queue.EnqueueOption) (*queue.TaskInfo, error) {
@@ -701,13 +727,120 @@ func TestPreviewDocumentContentRejectsBinaryParserMissing(t *testing.T) {
 	}
 }
 
-func TestImportURLIsExplicitNoOp(t *testing.T) {
-	// 验证 URL 导入暂未实现。
+func TestImportDocumentFromURLStoresTextDocumentAndEnqueuesParse(t *testing.T) {
+	// 验证 URL 导入会使用全局 crawler 抓取网页正文，保存为 txt 文档并投递解析任务。
+	ctx := context.Background()
+	userID := uuid.New()
+	docRepo := newFakeDocumentRepository()
+	kbRepo := newFakeDocumentKnowledgeBaseRepository()
+	store := newMemoryDocumentStore()
+	producer := &fakeDocumentTaskProducer{}
+	crawler := webcrawl.NewCrawler(
+		webcrawl.WithHTTPClient(fakeURLImportHTTPClient{body: `<html><head><title>  Go / 文档  </title></head><body><main>Hello URL import</main></body></html>`}),
+		webcrawl.WithURLGuard(fakeURLImportGuard{}),
+		webcrawl.WithMaxBodyBytes(maxDocumentFileSize),
+	)
+
+	out, err := NewImportDocumentFromUrlLogic(ctx, &svc.ServiceContext{
+		DocumentRepo:      docRepo,
+		KnowledgeBaseRepo: kbRepo,
+		Storage:           store,
+		TaskProducer:      producer,
+		RAGWebCrawler:     crawler,
+	}).ImportDocumentFromUrl(userID, &request.URLImportRequest{Url: "https://example.com/page"})
+	if err != nil {
+		t.Fatalf("ImportDocumentFromUrl error = %v", err)
+	}
+	if docRepo.created == nil {
+		t.Fatal("document was not created")
+	}
+	if docRepo.created.SourceType != documentSourceURL || docRepo.created.SourceUrl == nil || *docRepo.created.SourceUrl != "https://example.com/page" {
+		t.Fatalf("created source = %s/%v, want url source", docRepo.created.SourceType, docRepo.created.SourceUrl)
+	}
+	if docRepo.created.FileExt != ".txt" || docRepo.created.Status != domain.DocumentStatusPending {
+		t.Fatalf("created file/status = %s/%s, want .txt pending", docRepo.created.FileExt, docRepo.created.Status)
+	}
+	if !strings.HasSuffix(docRepo.created.FileName, ".txt") || strings.Contains(docRepo.created.FileName, "/") {
+		t.Fatalf("created file_name = %q, want safe txt name", docRepo.created.FileName)
+	}
+	if got := string(store.data[docRepo.created.FileKey]); got != "Hello URL import" {
+		t.Fatalf("stored content = %q, want extracted text", got)
+	}
+	if len(producer.tasks) != 1 {
+		t.Fatalf("queued tasks = %d, want 1", len(producer.tasks))
+	}
+	if out.ID != docRepo.created.ID || out.SourceUrl == nil || *out.SourceUrl != "https://example.com/page" || out.SourceType != documentSourceURL {
+		t.Fatalf("response = %+v, want URL document response", out)
+	}
+	if kbRepo.created == nil || !kbRepo.created.IsDefault {
+		t.Fatalf("default kb = %+v, want created", kbRepo.created)
+	}
+}
+
+func TestImportDocumentFromURLRequiresCrawler(t *testing.T) {
+	// 验证 URL 导入依赖 svc 中的全局 crawler，缺失时返回明确错误。
 	ctx := context.Background()
 	userID := uuid.New()
 
-	if _, err := NewImportDocumentFromUrlLogic(ctx, &svc.ServiceContext{}).ImportDocumentFromUrl(userID, &request.URLImportRequest{Url: "https://example.com"}); err == nil {
-		t.Fatal("ImportDocumentFromUrl error = nil, want not implemented error")
+	_, err := NewImportDocumentFromUrlLogic(ctx, &svc.ServiceContext{
+		DocumentRepo:      newFakeDocumentRepository(),
+		KnowledgeBaseRepo: newFakeDocumentKnowledgeBaseRepository(),
+		Storage:           newMemoryDocumentStore(),
+		TaskProducer:      &fakeDocumentTaskProducer{},
+	}).ImportDocumentFromUrl(userID, &request.URLImportRequest{Url: "https://example.com"})
+	if err == nil || !strings.Contains(err.Error(), "网页抓取器未初始化") {
+		t.Fatalf("ImportDocumentFromUrl error = %v, want crawler error", err)
+	}
+}
+
+func TestImportDocumentFromURLReturnsBadRequestWhenCrawlerFails(t *testing.T) {
+	// 验证 URL 抓取失败会作为请求错误返回，并且不会创建文档记录。
+	ctx := context.Background()
+	userID := uuid.New()
+	docRepo := newFakeDocumentRepository()
+	crawler := webcrawl.NewCrawler(
+		webcrawl.WithHTTPClient(fakeURLImportHTTPClient{err: errors.New("blocked")}),
+		webcrawl.WithURLGuard(fakeURLImportGuard{}),
+	)
+
+	_, err := NewImportDocumentFromUrlLogic(ctx, &svc.ServiceContext{
+		DocumentRepo:      docRepo,
+		KnowledgeBaseRepo: newFakeDocumentKnowledgeBaseRepository(),
+		Storage:           newMemoryDocumentStore(),
+		TaskProducer:      &fakeDocumentTaskProducer{},
+		RAGWebCrawler:     crawler,
+	}).ImportDocumentFromUrl(userID, &request.URLImportRequest{Url: "https://example.com"})
+	if xerr.From(err).Kind != xerr.KindBadRequest {
+		t.Fatalf("ImportDocumentFromUrl error = %v, want bad request", err)
+	}
+	if docRepo.created != nil {
+		t.Fatalf("created document = %+v, want nil", docRepo.created)
+	}
+}
+
+func TestImportDocumentFromURLMarksFailedWhenQueueEnqueueFails(t *testing.T) {
+	// 验证 URL 导入创建文档后若解析任务入队失败，会把文档标记为 failed。
+	ctx := context.Background()
+	userID := uuid.New()
+	docRepo := newFakeDocumentRepository()
+	producer := &fakeDocumentTaskProducer{parseErr: errors.New("queue down")}
+	crawler := webcrawl.NewCrawler(
+		webcrawl.WithHTTPClient(fakeURLImportHTTPClient{body: `<html><head><title>Doc</title></head><body>content</body></html>`}),
+		webcrawl.WithURLGuard(fakeURLImportGuard{}),
+	)
+
+	_, err := NewImportDocumentFromUrlLogic(ctx, &svc.ServiceContext{
+		DocumentRepo:      docRepo,
+		KnowledgeBaseRepo: newFakeDocumentKnowledgeBaseRepository(),
+		Storage:           newMemoryDocumentStore(),
+		TaskProducer:      producer,
+		RAGWebCrawler:     crawler,
+	}).ImportDocumentFromUrl(userID, &request.URLImportRequest{Url: "https://example.com"})
+	if err == nil {
+		t.Fatal("ImportDocumentFromUrl error = nil, want enqueue error")
+	}
+	if docRepo.partial == nil || docRepo.partial.Status != domain.DocumentStatusFailed || docRepo.partial.ErrorMsg == nil {
+		t.Fatalf("failed patch = %+v, want failed status and error", docRepo.partial)
 	}
 }
 

@@ -25,6 +25,7 @@ func NewCrawler(opts ...Option) *Crawler {
 			Timeout:      defaultTimeout,
 			MaxRedirects: defaultMaxRedirects,
 			RetryCount:   defaultRetryCount,
+			MaxBodyBytes: defaultMaxBodyBytes,
 			Extractor:    NewHTMLExtractor(),
 			URLGuard:     NewURLGuard(),
 		},
@@ -88,7 +89,7 @@ func (c *Crawler) fetchOnce(ctx context.Context, rawURL string) (Page, error) {
 	if resp.StatusCode >= http.StatusBadRequest {
 		return Page{}, fmt.Errorf("web page request error: %s", resp.Status)
 	}
-	body, err := io.ReadAll(resp.Body)
+	body, err := readLimitedBody(resp.Body, c.MaxBodyBytes)
 	if err != nil {
 		return Page{}, err
 	}
@@ -99,6 +100,22 @@ func (c *Crawler) fetchOnce(ctx context.Context, rawURL string) (Page, error) {
 		finalURL = resp.Request.URL.String()
 	}
 	return Page{URL: finalURL, HTML: body}, nil
+}
+
+// readLimitedBody 读取响应体，并在配置上限时拒绝超限内容。
+func readLimitedBody(reader io.Reader, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 {
+		return io.ReadAll(reader)
+	}
+	// 多读 1 字节用于区分“刚好到上限”和“超过上限”，避免把边界值误判为超限。
+	body, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > maxBytes {
+		return nil, fmt.Errorf("web page body exceeds %d bytes", maxBytes)
+	}
+	return body, nil
 }
 
 // applyBrowserHeaders 设置浏览器风格请求头，减少常见站点的简单拦截。

@@ -7,6 +7,7 @@ import (
 
 	"github.com/boxify/api-go/internal/domain"
 	"github.com/boxify/api-go/internal/infrastructure/queue"
+	knowledgebaselogic "github.com/boxify/api-go/internal/logic/knowledgebase"
 	"github.com/boxify/api-go/internal/models"
 	"github.com/boxify/api-go/internal/repository"
 	"github.com/boxify/api-go/internal/svc"
@@ -16,6 +17,7 @@ import (
 
 const (
 	documentSourceFile  = "file"
+	documentSourceURL   = "url"
 	maxDocumentFileSize = 50 * 1024 * 1024
 	previewMaxChars     = 80000
 )
@@ -83,6 +85,26 @@ func supportedDocumentExt(ext string) (string, error) {
 		return "", xerr.BadRequestf("不支持的文件类型: %s", ext)
 	}
 	return ext, nil
+}
+
+func resolveDocumentKnowledgeBaseID(ctx context.Context, repo repository.KnowledgeBaseRepository, log *slog.Logger, userID uuid.UUID, rawKBID *string) (uuid.UUID, error) {
+	if repo == nil {
+		return uuid.Nil, xerr.BadRequest("知识库仓储未初始化")
+	}
+	if parsed, err := parseOptionalKBID(rawKBID); err != nil {
+		return uuid.Nil, err
+	} else if parsed != nil {
+		row, err := repo.FindByID(ctx, userID, *parsed)
+		if err != nil {
+			return uuid.Nil, err
+		}
+		return row.ID, nil
+	}
+	row, _, err := knowledgebaselogic.EnsureDefaultKnowledgeBase(ctx, repo, userID, log)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return row.ID, nil
 }
 
 func isPreviewTextExt(ext string) bool {

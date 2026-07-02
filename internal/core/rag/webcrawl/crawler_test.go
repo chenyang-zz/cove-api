@@ -218,6 +218,39 @@ func TestCrawlerAllowsExtractorInjection(t *testing.T) {
 	}
 }
 
+func TestCrawlerFetchLimitsBodyBytes(t *testing.T) {
+	// 验证 crawler 可通过 MaxBodyBytes 限制网页响应体大小，避免 URL 导入读取超大页面。
+	client := &fakeHTTPClient{resps: []*http.Response{{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(`<html><body>tiny</body></html>`)),
+		Header:     make(http.Header),
+		Request:    mustRequest(t, "https://example.com"),
+	}}}
+	crawler := NewCrawler(
+		WithHTTPClient(client),
+		WithURLGuard(fakeGuard{}),
+		WithMaxBodyBytes(128),
+	)
+	if _, err := crawler.Fetch(context.Background(), Input{URL: "https://example.com"}); err != nil {
+		t.Fatalf("Fetch small body error = %v, want nil", err)
+	}
+
+	client = &fakeHTTPClient{resps: []*http.Response{{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(strings.Repeat("x", 129))),
+		Header:     make(http.Header),
+		Request:    mustRequest(t, "https://example.com/large"),
+	}}}
+	crawler = NewCrawler(
+		WithHTTPClient(client),
+		WithURLGuard(fakeGuard{}),
+		WithMaxBodyBytes(128),
+	)
+	if _, err := crawler.Fetch(context.Background(), Input{URL: "https://example.com/large"}); err == nil {
+		t.Fatal("Fetch large body error = nil, want size limit error")
+	}
+}
+
 func TestDefaultHTTPClientValidatesRedirectURL(t *testing.T) {
 	// 验证默认 HTTP client 跟随重定向时会再次执行 URL guard，防止通过 redirect 绕过 SSRF 检查。
 	guard := &recordingGuard{}

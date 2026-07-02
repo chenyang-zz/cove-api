@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,7 @@ import (
 	"github.com/boxify/api-go/internal/config"
 	corellm "github.com/boxify/api-go/internal/core/llm"
 	ragsearch "github.com/boxify/api-go/internal/core/rag/search"
+	"github.com/boxify/api-go/internal/core/rag/webcrawl"
 	"github.com/boxify/api-go/internal/domain"
 	infraes "github.com/boxify/api-go/internal/infrastructure/db/es"
 	"github.com/boxify/api-go/internal/infrastructure/queue"
@@ -100,6 +102,7 @@ func newTestRouterWithConfig(t *testing.T, cfg config.Config, enableDebugPanicRo
 		Elasticsearch:     esClient,
 		RAGChunkRepo:      ragChunkRepo,
 		RAGSearcher:       ragsearch.NewSearcher[models.RAGChunkSource](esClient, ragsearch.WithIndex(cfg.Rag.ChunkIndex), ragsearch.WithEmbeddingDim(cfg.Rag.EmbeddingDim), ragsearch.WithSourceDecoder[models.RAGChunkSource](ragChunkRepo.DecodeSource)),
+		RAGWebCrawler:     webcrawl.NewCrawler(webcrawl.WithHTTPClient(testWebCrawlerHTTPClient{}), webcrawl.WithURLGuard(testWebCrawlerGuard{})),
 		Realtime:          testRealtimeBroker{},
 		TaskProducer:      testTaskProducer{},
 		LLMManager:        llmManager,
@@ -186,6 +189,23 @@ func (testTaskProducer) Enqueue(ctx context.Context, task *domain.Task, opts ...
 }
 
 func (testTaskProducer) Close() error {
+	return nil
+}
+
+type testWebCrawlerHTTPClient struct{}
+
+func (testWebCrawlerHTTPClient) Do(req *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(`<html><head><title>Imported Page</title></head><body><main>Imported body</main></body></html>`)),
+		Header:     make(http.Header),
+		Request:    req,
+	}, nil
+}
+
+type testWebCrawlerGuard struct{}
+
+func (testWebCrawlerGuard) Validate(ctx context.Context, rawURL string) error {
 	return nil
 }
 
@@ -1094,6 +1114,33 @@ func TestDocumentRoutesSupportCoreAuthenticatedFlow(t *testing.T) {
 	}
 	docID := uploadBody.Data.ID
 
+	importURL := httptest.NewRecorder()
+	importURLReq := httptest.NewRequest(http.MethodPost, "/api/document/from-url", strings.NewReader(`{"url":"https://example.com/imported","kb_id":"`+kbID+`"}`))
+	importURLReq.Header.Set("Content-Type", "application/json")
+	importURLReq.Header.Set("Authorization", "Bearer dev-token")
+	router.ServeHTTP(importURL, importURLReq)
+	if importURL.Code != http.StatusOK {
+		t.Fatalf("import url status = %d body=%s", importURL.Code, importURL.Body.String())
+	}
+	var importURLBody struct {
+		Data struct {
+			ID         string `json:"id"`
+			KBID       string `json:"kb_id"`
+			FileName   string `json:"file_name"`
+			FileExt    string `json:"file_ext"`
+			SourceType string `json:"source_type"`
+			SourceUrl  string `json:"source_url"`
+			Status     string `json:"status"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(importURL.Body.Bytes(), &importURLBody); err != nil {
+		t.Fatalf("unmarshal import url body: %v", err)
+	}
+	if importURLBody.Data.ID == "" || importURLBody.Data.KBID != kbID || importURLBody.Data.FileExt != ".txt" ||
+		importURLBody.Data.SourceType != "url" || importURLBody.Data.SourceUrl != "https://example.com/imported" || importURLBody.Data.Status != "pending" {
+		t.Fatalf("import url body = %+v, want created URL document", importURLBody.Data)
+	}
+
 	kbAfterUpload := httptest.NewRecorder()
 	kbAfterUploadReq := httptest.NewRequest(http.MethodGet, "/api/knowledge-base/", nil)
 	kbAfterUploadReq.Header.Set("Authorization", "Bearer dev-token")
@@ -1114,8 +1161,8 @@ func TestDocumentRoutesSupportCoreAuthenticatedFlow(t *testing.T) {
 		t.Fatalf("unmarshal kb after upload body: %v", err)
 	}
 	if len(kbAfterUploadBody.Data.List) != 1 || kbAfterUploadBody.Data.List[0].ID != kbID ||
-		kbAfterUploadBody.Data.List[0].DocCount != 1 || kbAfterUploadBody.Data.List[0].ImageCount != 0 {
-		t.Fatalf("kb after upload body = %+v, want doc_count=1 image_count=0", kbAfterUploadBody.Data)
+		kbAfterUploadBody.Data.List[0].DocCount != 2 || kbAfterUploadBody.Data.List[0].ImageCount != 0 {
+		t.Fatalf("kb after upload body = %+v, want doc_count=2 image_count=0", kbAfterUploadBody.Data)
 	}
 
 	list := httptest.NewRecorder()
@@ -1136,8 +1183,8 @@ func TestDocumentRoutesSupportCoreAuthenticatedFlow(t *testing.T) {
 	if err := json.Unmarshal(list.Body.Bytes(), &listBody); err != nil {
 		t.Fatalf("unmarshal list body: %v", err)
 	}
-	if listBody.Data.Total != 1 || len(listBody.Data.List) != 1 || listBody.Data.List[0].ID != docID {
-		t.Fatalf("list body = %+v, want uploaded document", listBody.Data)
+	if listBody.Data.Total != 2 || len(listBody.Data.List) != 2 || listBody.Data.List[0].ID != docID {
+		t.Fatalf("list body = %+v, want uploaded and URL imported documents", listBody.Data)
 	}
 
 	for _, route := range []string{"/api/document/" + docID, "/api/document/" + docID + "/status", "/api/document/" + docID + "/preview"} {

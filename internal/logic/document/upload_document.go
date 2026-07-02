@@ -6,7 +6,6 @@ import (
 
 	"github.com/boxify/api-go/internal/domain"
 	"github.com/boxify/api-go/internal/infrastructure/storage"
-	knowledgebaselogic "github.com/boxify/api-go/internal/logic/knowledgebase"
 	"github.com/boxify/api-go/internal/mapper"
 	"github.com/boxify/api-go/internal/models"
 	"github.com/boxify/api-go/internal/observability/xlog"
@@ -50,7 +49,7 @@ func (l *UploadDocumentLogic) UploadDocument(userID uuid.UUID, input *request.Up
 	if err != nil {
 		return nil, err
 	}
-	kbID, err := l.resolveKnowledgeBaseID(userID, input.KBID)
+	kbID, err := resolveDocumentKnowledgeBaseID(l.ctx, l.svcCtx.KnowledgeBaseRepo, l.log, userID, input.KBID)
 	if err != nil {
 		return nil, err
 	}
@@ -93,24 +92,4 @@ func (l *UploadDocumentLogic) UploadDocument(userID uuid.UUID, input *request.Up
 		slog.String("document_id", row.ID.String()),
 	)
 	return mapper.DocumentToResponse(row, nil), nil
-}
-
-func (l *UploadDocumentLogic) resolveKnowledgeBaseID(userID uuid.UUID, rawKBID *string) (uuid.UUID, error) {
-	if l.svcCtx.KnowledgeBaseRepo == nil {
-		return uuid.Nil, xerr.BadRequest("知识库仓储未初始化")
-	}
-	if parsed, err := parseOptionalKBID(rawKBID); err != nil {
-		return uuid.Nil, err
-	} else if parsed != nil {
-		row, err := l.svcCtx.KnowledgeBaseRepo.FindByID(l.ctx, userID, *parsed)
-		if err != nil {
-			return uuid.Nil, err
-		}
-		return row.ID, nil
-	}
-	row, _, err := knowledgebaselogic.EnsureDefaultKnowledgeBase(l.ctx, l.svcCtx.KnowledgeBaseRepo, userID, l.log)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	return row.ID, nil
 }

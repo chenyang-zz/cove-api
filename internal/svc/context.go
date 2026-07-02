@@ -15,6 +15,7 @@ import (
 	ragclassifier "github.com/boxify/api-go/internal/core/rag/classifier"
 	ragparser "github.com/boxify/api-go/internal/core/rag/documentparse"
 	ragsearch "github.com/boxify/api-go/internal/core/rag/search"
+	"github.com/boxify/api-go/internal/core/rag/webcrawl"
 	infraes "github.com/boxify/api-go/internal/infrastructure/db/es"
 	dbneo4j "github.com/boxify/api-go/internal/infrastructure/db/neo4j"
 	dbpostgres "github.com/boxify/api-go/internal/infrastructure/db/postgres"
@@ -67,6 +68,7 @@ type ServiceContext struct {
 	RAGClassifier       *ragclassifier.Classifier
 	RAGDocumentParser   *ragparser.Parser
 	RAGChunker          *ragchunker.Chunker
+	RAGWebCrawler       *webcrawl.Crawler
 
 	SecretCipher *security.SecretCipher
 	TokenIssuer  *security.TokenIssuer
@@ -142,6 +144,7 @@ func New(ctx context.Context, cfg config.Config) (*ServiceContext, error) {
 	svcCtx.RAGDocumentParser = ragparser.NewParser()
 	svcCtx.RAGChunker = ragchunker.NewChunker(ragchunker.WithParentChunkTokens(1200))
 	svcCtx.RAGClassifier = ragclassifier.NewClassifier()
+	svcCtx.RAGWebCrawler = webcrawl.NewCrawler()
 
 	store, urlSigner, err := BuildStorage(cfg.Storage)
 	if err != nil {

@@ -1,0 +1,19 @@
+.gitignore
+  s_7b556c99c63b88::t_cc1771f844a7fe 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.9",
+  "base_commit_sha": "d7bbc449adc69cbab871de87fe630c9de49b6937",
+  "prompts": {},
+  "sessions": {
+    "s_7b556c99c63b88": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_7b556c99c63b88",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

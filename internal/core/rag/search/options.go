@@ -1,7 +1,7 @@
 package search
 
 const (
-	defaultIndex        = "comet_chunks"
+	defaultIndex        = "cove_chunks"
 	defaultVectorWeight = 0.6
 	defaultBM25Weight   = 0.4
 	defaultTopK         = 5

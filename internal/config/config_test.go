@@ -24,8 +24,8 @@ func TestLoadFileUsesDefaultsWhenYAMLIsMissing(t *testing.T) {
 	if cfg.Redis.Addr != "localhost:6379" {
 		t.Fatalf("redis addr = %q", cfg.Redis.Addr)
 	}
-	if cfg.Rag.ChunkIndex != "boxify_chunks" || cfg.Rag.EmbeddingDim != 1024 {
-		t.Fatalf("rag defaults = %#v, want boxify_chunks/1024", cfg.Rag)
+	if cfg.Rag.ChunkIndex != "cove_chunks" || cfg.Rag.EmbeddingDim != 1024 {
+		t.Fatalf("rag defaults = %#v, want cove_chunks/1024", cfg.Rag)
 	}
 }
 

@@ -9,11 +9,11 @@ docs:
   enabled: true
   path: /docs
   spec_path: /docs/openapi.json
-  title: Boxify API
+  title: Cove API
   version: 0.1.0
 
 database:
-  url: postgres://comet:comet@localhost:5432/comet?sslmode=disable
+  url: postgres://cove:cove@localhost:5432/cove?sslmode=disable
 
 redis:
   addr: localhost:6379
@@ -30,8 +30,8 @@ elasticsearch:
 neo4j:
   uri: bolt://124.222.103.82:7687
   username: "neo4j"
-  password: "boxify@2026"
-  database: "boxify"
+  password: "cove@2026"
+  database: "cove"
 
 jwt:
   secret: change-me

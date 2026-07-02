@@ -157,8 +157,8 @@ func defaultConfig() Config {
 	return Config{
 		App:           AppConfig{Env: "development"},
 		HTTP:          HTTPConfig{Host: "0.0.0.0", Port: 8000},
-		Docs:          DocsConfig{Path: "/docs", SpecPath: "/docs/openapi.json", Title: "Boxify API", Version: "0.1.0"},
-		Database:      DatabaseConfig{URL: "postgres://comet:comet@localhost:5432/comet?sslmode=disable"},
+		Docs:          DocsConfig{Path: "/docs", SpecPath: "/docs/openapi.json", Title: "Cove API", Version: "0.1.0"},
+		Database:      DatabaseConfig{URL: "postgres://cove:cove@localhost:5432/cove?sslmode=disable"},
 		Redis:         RedisConfig{Addr: "localhost:6379"},
 		Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200"},
 		Neo4j:         Neo4jConfig{URI: "bolt://localhost:7687"},
@@ -166,7 +166,7 @@ func defaultConfig() Config {
 		SecretKey:     "0123456789abcdef0123456789abcdef",
 		Storage:       StorageConfig{Backend: "local", Dir: "./storage"},
 		LLM:           LLMConfig{Provider: "openai", BaseURL: "https://api.openai.com/v1"},
-		Rag:           RagConfig{EmbeddingDim: 1024, ChunkIndex: "boxify_chunks"},
+		Rag:           RagConfig{EmbeddingDim: 1024, ChunkIndex: "cove_chunks"},
 		Memory: MemoryConfig{
 			NameSimGate:                      0.8,
 			LLMMergeConfidence:               0.8,

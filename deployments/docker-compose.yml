@@ -2,9 +2,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: comet
-      POSTGRES_PASSWORD: comet
-      POSTGRES_DB: comet
+      POSTGRES_USER: cove
+      POSTGRES_PASSWORD: cove
+      POSTGRES_DB: cove
     ports:
       - "5432:5432"
     volumes:
@@ -24,7 +24,7 @@ services:
   neo4j:
     image: neo4j:5.26
     environment:
-      NEO4J_AUTH: neo4j/cometneo4j
+      NEO4J_AUTH: neo4j/coveneo4j
     ports:
       - "7474:7474"
       - "7687:7687"

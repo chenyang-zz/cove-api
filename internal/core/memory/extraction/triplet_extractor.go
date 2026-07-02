@@ -47,7 +47,7 @@ func (e *TripletExtractor) Extract(ctx context.Context, statement *memory.Extrac
 	}
 
 	promptText, err := e.prompt.MemoryPrompts.TripletExtract(&prompt.TripletExtractData{
-		Statemnet:   statement.Statement,
+		Statement:   statement.Statement,
 		Context:     context,
 		EntityTypes: []string{},
 		Predicates:  []string{},

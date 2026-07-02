@@ -66,3 +66,21 @@ Use `internal/core/rag/search` as the implementation template for new packages u
 - Keep exported methods small and orchestration-focused. Move query building, normalization, filtering, sorting, decoding, and fallback behavior into private helper functions.
 - Key implementation steps must include Chinese comments explaining what they do, especially non-obvious algorithms, fallback behavior, score normalization, filtering, and external-service query construction.
 - Tests should use local fakes for dependencies, cover defaults/options, dependency errors, request overrides, helper edge cases, fallback paths, and result shaping. Every test function must include a Chinese comment explaining what the test verifies.
+
+## Go Documentation and Function Style
+
+These constraints apply to new or modified packages under `internal/core`.
+
+- Package comments should exist for non-trivial packages and start with `Package <name> ...`. Keep one package comment per package, usually near the main package file.
+- Exported top-level types, functions, methods, constants, and variables must have Go doc comments. Non-trivial unexported types and functions should also have comments when behavior is not obvious.
+- Go doc comments should be Chinese complete sentences, start with the declared identifier or a natural article plus the identifier, and end with punctuation. 
+  Body comments for key implementation steps should remain Chinese when explaining non-obvious logic, as required by the existing generated-code rule.
+- Function and method doc comments must describe caller-visible behavior: what the function returns or does, important errors, side effects, concurrency guarantees, nil/zero-value behavior, fallback behavior, and special cases. Do not document private implementation algorithms in exported doc comments; put algorithm notes inside the function body.
+- Boolean-returning functions should use “reports whether” in doc comments. Multi-result functions should document what each result means when it is not obvious.
+- Function names should be short, idiomatic, and read well with the package name. Avoid redundant package words, avoid `Get` prefixes for simple getters, use `New` or `New<Type>` for constructors, and use MixedCaps with standard initialisms.
+- One-method interfaces should usually use the `-er` naming pattern, such as `Reader`, `Writer`, `Searcher`, or `Decoder`. Define interfaces at the consumer side and keep them as small as the behavior actually needed.
+- Functions should accept `context.Context` as the first parameter when they perform request-scoped work, I/O, external calls, cancellation-aware work, or potentially long-running operations.
+- Keep exported functions orchestration-focused and easy to scan. Move parsing, validation, query construction, normalization, filtering, sorting, decoding, and fallback details into private helpers when the main function becomes dense.
+- Prefer explicit error returns over panic for normal failures. Error strings should be lower-case and should not end with punctuation unless the message includes a proper noun or acronym.
+- Avoid mutable package globals for core behavior. Inject dependencies through constructors or options so tests can use local fakes without global mutation.
+- Tests for core functions must have useful failure messages that include the function or behavior under test, the actual result, and the expected result. For large values, prefer diffs over dumping unreadable structs.

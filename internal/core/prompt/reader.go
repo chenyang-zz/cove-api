@@ -1,22 +1,17 @@
 // Package prompt 负责模板文件读取。
 //
-// 本文件把读取逻辑限制在“拿到模板文本”这一层，不解析模板语法；解析和执行
-// 统一交给 template.go，旧 Manager 的磁盘文件读取也在这里兼容。
-//
-// 核心函数示例：
-//
-// (*Renderer).TemplateText 从 Renderer 绑定的模板来源读取原文：
-//
-//	text, err := renderer.TemplateText("content_classifier.tmpl")
+// 本文件把读取逻辑限制在“拿到模板文本”这一层，不解析模板语法。文件系统读取
+// 和旧 root 目录读取都在这里实现，解析和执行统一交给 template.go。
 package prompt
 
 import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 )
 
-// TemplateText 从 Renderer 绑定的文件系统读取原始模板文本。
+// TemplateText 从 Renderer 绑定的文件系统读取原始模板文本，不解析模板语法。
 func (r *Renderer) TemplateText(name string) (string, error) {
 	if err := r.validateFS(); err != nil {
 		return "", err
@@ -37,11 +32,13 @@ func readTemplate(fsys TemplateFS, name string) (string, error) {
 	return string(data), nil
 }
 
-// renderFile 兼容旧 Manager 的磁盘路径渲染方式。
-func renderFile(path string, data any) (string, error) {
+// readTemplateFile 兼容旧 Manager 的磁盘 root 读取方式。
+func readTemplateFile(root string, name string) (string, error) {
+	templateName := rootTemplateName(name)
+	path := filepath.Join(root, templateName)
 	text, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("read prompt %s failed: %w", path, err)
 	}
-	return renderTemplate(path, string(text), data, defaultFuncs())
+	return string(text), nil
 }

@@ -12,26 +12,31 @@ package prompt
 
 import "fmt"
 
+// OptimizePromptData 表示优化智能体提示词模板需要的数据。
 type OptimizePromptData struct {
 	RawPrompt string
 }
 
+// AgentPrompts 提供 agent 模板的类型化入口。
 type AgentPrompts struct {
 	namespace string
-	manger    *Manager
+	manager   *Manager
 }
 
+// NewAgentPrompts 创建 agent 提示词入口。
 func NewAgentPrompts(manager *Manager) *AgentPrompts {
 	return &AgentPrompts{
 		namespace: "agent",
-		manger:    manager,
+		manager:   manager,
 	}
 }
 
+// OptimizePrompt 渲染提示词优化模板。
 func (p *AgentPrompts) OptimizePrompt(data *OptimizePromptData) (string, error) {
 	return p._render("optimize_prompt", data)
 }
 
+// _render 拼接 agent 模板名称，并交给 Manager 统一查找和渲染。
 func (p *AgentPrompts) _render(promptName string, data any) (string, error) {
-	return p.manger.Render(fmt.Sprintf("%s/%s", p.namespace, promptName), data)
+	return p.manager.Render(fmt.Sprintf("%s/%s", p.namespace, promptName), data)
 }

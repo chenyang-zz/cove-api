@@ -1,17 +1,7 @@
-// Package prompt 定义提示词模板渲染的核心抽象。
+// Package prompt 定义提示词模板管理和渲染的核心类型。
 //
-// 本文件只放跨文件复用的类型：模板来源统一抽象为 TemplateFS，渲染状态统一
-// 收敛到 Renderer，避免调用方依赖具体的 embed.FS、os.DirFS 或测试 fake FS。
-//
-// 核心类型示例：
-//
-// TemplateFS 可接收 embed.FS、os.DirFS 或测试用 fake FS：
-//
-//	renderer := prompt.NewRenderer(fsys)
-//
-// Renderer 可配合 Option 复用自定义模板函数：
-//
-//	renderer := prompt.NewRenderer(fsys, prompt.WithFuncs(funcs))
+// 本文件只放跨文件复用的结构体和接口，具体读取、注册、渲染流程分别放在
+// reader.go、manager_register.go 和 manager_render.go 中。
 package prompt
 
 import (
@@ -24,8 +14,21 @@ type TemplateFS interface {
 	fs.FS
 }
 
-// Renderer 绑定一组模板文件和模板函数，用于重复渲染同一来源的提示词。
+// Renderer 绑定一组模板文件和模板函数，用于重复读取或渲染同一来源的提示词。
 type Renderer struct {
 	fsys  TemplateFS
 	funcs template.FuncMap
+}
+
+// Manager 管理多个提示词来源，并兼容旧的磁盘 root 模板目录。
+//
+// Manager 的模板查找顺序固定为：内存文本模板、已注册命名空间文件系统、
+// 旧 root 目录。Manager 不做并发写保护；注册模板来源应在并发渲染前完成。
+type Manager struct {
+	root          string
+	texts         map[string]string
+	sources       map[string]TemplateFS
+	funcs         template.FuncMap
+	MemoryPrompts *MemoryPrompts
+	AgentPrompts  *AgentPrompts
 }

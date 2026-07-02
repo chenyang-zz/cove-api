@@ -2,20 +2,6 @@
 //
 // 本文件负责把模板文件系统和模板函数集合绑定到 Renderer 上，适用于同一调用方
 // 多次读取或渲染同一批提示词模板的场景。
-//
-// 核心函数示例：
-//
-// NewRenderer 创建绑定模板来源的可复用渲染器：
-//
-//	renderer := prompt.NewRenderer(ragprompt.Templates)
-//
-// (*Renderer).Render 复用同一个渲染器读取并渲染模板：
-//
-//	out, err := renderer.Render(ragprompt.ContentClassifierTemplate, data)
-//
-// (*Renderer).RenderText 复用同一个渲染器的模板函数集合渲染字符串：
-//
-//	out, err := renderer.RenderText("标签：{{ .Tag }}", map[string]string{"Tag": "技术"})
 package prompt
 
 import (
@@ -23,6 +9,8 @@ import (
 )
 
 // NewRenderer 创建可复用的提示词渲染器，默认启用项目通用模板函数。
+//
+// fsys 可以为 nil；此时 Render 和 TemplateText 会返回错误，但 RenderText 仍可使用。
 func NewRenderer(fsys TemplateFS, opts ...Option) *Renderer {
 	renderer := &Renderer{
 		fsys:  fsys,
@@ -38,6 +26,8 @@ func NewRenderer(fsys TemplateFS, opts ...Option) *Renderer {
 }
 
 // Render 使用 Renderer 绑定的文件系统读取并渲染指定模板。
+//
+// Renderer 或文件系统为 nil、模板读取失败、模板语法错误或执行失败时返回错误。
 func (r *Renderer) Render(name string, data any) (string, error) {
 	if err := r.validateFS(); err != nil {
 		return "", err
@@ -51,6 +41,8 @@ func (r *Renderer) Render(name string, data any) (string, error) {
 }
 
 // RenderText 使用 Renderer 绑定的函数集合渲染内存中的模板文本。
+//
+// Renderer 为 nil、模板语法错误或执行失败时返回错误。
 func (r *Renderer) RenderText(text string, data any) (string, error) {
 	if r == nil {
 		return "", fmt.Errorf("prompt renderer is nil")

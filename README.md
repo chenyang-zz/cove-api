@@ -1,8 +1,8 @@
 # Cove API — Go
 
 <p align="center">
-  <b>Cove is an AI assistant platform backend</b><br/>
-  Conversations, RAG, agents, memory, MCP — all in one Go codebase.
+  <b>Cove 是一个 AI 助手平台后端</b><br/>
+  对话、RAG、Agent、记忆、MCP——全部整合在一个 Go 代码库中。
 </p>
 
 <p align="center">
@@ -13,165 +13,166 @@
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> ·
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="#rag-pipeline">RAG Pipeline</a> ·
-  <a href="#configuration">Configuration</a> ·
-  <a href="#development">Development</a> ·
-  <a href="https://github.com/chenyang-zz/cove-api/blob/main/docs/architecture.md">Docs</a>
+  <a href="#%E6%A0%87%E5%BF%97">特性</a> ·
+  <a href="#%E6%8A%80%E6%9C%AF%E6%A0%88">技术栈</a> ·
+  <a href="#%E5%BF%AB%E9%80%9F%E5%BC%80%E5%A7%8B">快速开始</a> ·
+  <a href="#%E6%9E%B6%E6%9E%84">架构</a> ·
+  <a href="#rag-%E7%AE%A1%E7%BA%BF">RAG 管线</a> ·
+  <a href="#%E9%85%8D%E7%BD%AE">配置</a> ·
+  <a href="#%E5%BC%80%E5%8F%91">开发</a> ·
+  <a href="https://github.com/chenyang-zz/cove-api/blob/main/docs/architecture.md">文档</a>
 </p>
 
 ---
 
-## Features
+## 特性
 
-- **Conversations** — Streaming chat with SSE, multi-turn context management
-- **RAG Engine** — Full retrieval-augmented generation: crawl, parse, chunk, embed, search, rank
-- **Agent Orchestration** — Tool-calling agents with persona and memory
-- **Memory** — Long-term memory extraction, consolidation, and recall
-- **MCP Integration** — Connect external tools via Model Context Protocol
-- **Real-time** — Event streaming over Redis
-- **Document Processing** — Multi-format parsing: TXT, Markdown, HTML, DOCX, PDF
-- **Content Classification** — LLM-powered auto-tagging with graceful degradation
+- **对话** — 基于 SSE 的流式聊天，多轮上下文管理
+- **RAG 引擎** — 完整的检索增强生成：抓取、解析、分块、嵌入、检索、排序
+- **Agent 编排** — 支持人设与记忆的工具调用 Agent
+- **记忆** — 长期记忆的提取、合并与召回
+- **MCP 集成** — 通过 Model Context Protocol 连接外部工具
+- **实时推送** — 基于 Redis 的事件流
+- **文档处理** — 多格式解析：TXT、Markdown、HTML、DOCX、PDF
+- **内容分类** — LLM 驱动的自动标签，支持优雅降级
 
-## Tech Stack
+## 技术栈
 
-| Layer | Technology |
+| 层 | 技术 |
 |---|---|
-| **Language** | Go 1.25 |
-| **HTTP** | Gin (transport only — no leakage into domain) |
-| **Database** | PostgreSQL (pgx + GORM) |
-| **Search** | Elasticsearch 8.x (hybrid vector + BM25) |
-| **Graph** | Neo4j 5.x |
-| **Queue** | Redis + asynq |
+| **语言** | Go 1.25 |
+| **HTTP** | Gin（仅传输层，不侵入 domain） |
+| **数据库** | PostgreSQL (pgx + GORM) |
+| **搜索** | Elasticsearch 8.x（向量 + BM25 混合） |
+| **图数据库** | Neo4j 5.x |
+| **队列** | Redis + asynq |
 | **LLM** | Anthropic / OpenAI |
-| **Auth** | JWT |
-| **Storage** | Tencent Cloud COS (local fallback) |
-| **Observability** | slog + OpenTelemetry |
+| **认证** | JWT |
+| **存储** | 腾讯云 COS（本地 fallback） |
+| **可观测性** | slog + OpenTelemetry |
 
-## Quick Start
+## 快速开始
 
-### Prerequisites
+### 前置条件
 
 - Go 1.25+
 - Docker & Docker Compose
 
-### 1. Start dependencies
+### 1. 启动依赖服务
 
 ```bash
 docker compose -f deployments/docker-compose.yml up -d
 ```
 
-| Service | Port |
+| 服务 | 端口 |
 |---|---|
 | PostgreSQL | 5432 |
 | Elasticsearch | 9200 |
 | Neo4j | 7474 (HTTP), 7687 (Bolt) |
 | Redis | 6379 |
 
-### 2. Configure
+### 2. 配置
 
 ```bash
 cp configs/config.yml.example configs/config.yml
-# Edit configs/config.yml with your LLM keys and connection strings
+# 编辑 configs/config.yml，填入 LLM 密钥和连接串
 ```
 
-### 3. Migrate database
+### 3. 数据库迁移
 
 ```bash
 make migration
 ```
 
-### 4. Run
+### 4. 运行
 
 ```bash
-make api      # API server on :8000
-make worker   # Background worker (separate terminal)
-make scheduler # Cron jobs (optional)
+make api       # API 服务 :8000
+make worker    # 后台 worker（另开终端）
+make scheduler # Cron 任务（可选）
 ```
 
-## Architecture
+## 架构
 
 ```
-transport/http/    →  Gin routing, middleware, request/response DTOs
+transport/http/    →  Gin 路由、中间件、请求/响应 DTO
     ↓
-logic/             →  Business orchestration across repositories & domain
+logic/             →  跨 repository 与 domain 的业务编排
     ↓
-repository/        →  Data access (GORM / Neo4j / Elasticsearch)
+repository/        →  数据访问（GORM / Neo4j / Elasticsearch）
     ↓
-domain/            →  Domain types, events, interfaces
+domain/            →  领域类型、事件、接口
 ```
 
-Cross-cutting concerns (LLM, memory, RAG, MCP, security) live in `internal/core/` and are wired through a single `ServiceContext` — see `internal/svc/context.go`.
+横切关注点（LLM、记忆、RAG、MCP、安全）位于 `internal/core/`，通过单一的 `ServiceContext` 注入 — 参见 `internal/svc/context.go`。
 
-### Core packages
+### 核心包
 
 ```
 internal/core/
-├── agent/          # Agent orchestration & tool dispatch
-├── llm/            # LLM provider abstraction
-├── rag/            # Retrieval-augmented generation engine
-│   ├── chunker/        # Token-aware parent/child chunking
-│   ├── classifier/     # LLM content classification
-│   ├── documentparse/  # Multi-format text extraction
-│   ├── imagecompress/  # Model-ready image preprocessing
-│   ├── imagedescribe/  # Vision model structured descriptions
-│   ├── prompt/         # RAG prompt templates (embedded)
-│   ├── search/         # Hybrid vector + BM25 search
-│   └── webcrawl/       # Web fetching with SSRF guard
-├── memory/         # Long-term memory extraction & consolidation
-├── mcp/            # Model Context Protocol integration
-├── prompt/         # Template rendering (FS, memory, legacy fallback)
-└── security/       # JWT, encryption, secret management
+├── agent/          # Agent 编排与工具调度
+├── llm/            # LLM Provider 抽象
+├── rag/            # 检索增强生成引擎
+│   ├── chunker/        # tiktoken 感知的 parent/child 分块
+│   ├── classifier/     # LLM 内容分类
+│   ├── documentparse/  # 多格式文本提取
+│   ├── imagecompress/  # 模型输入预处理
+│   ├── imagedescribe/  # 视觉模型结构化描述
+│   ├── prompt/         # RAG 提示词模板（嵌入产物）
+│   ├── search/         # 向量 + BM25 混合检索
+│   └── webcrawl/       # 网页抓取，含 SSRF 防护
+├── memory/         # 长期记忆提取与合并
+├── mcp/            # Model Context Protocol 集成
+├── prompt/         # 模板渲染（文件系统、记忆、向后兼容 fallback）
+└── security/       # JWT、加解密、密钥管理
 ```
 
-## RAG Pipeline
+## RAG 管线
 
-Cove's 11-step ingestion pipeline turns raw sources into retrievable knowledge:
+Cove 的 11 步入库流水线将原始来源转换为可检索的知识：
 
 ```
 Source
   │
   ▼
-1. Crawl       ──── webcrawl/     Fetch with retry, redirect tracking, SSRF guard
+1. Crawl       ──── webcrawl/     抓取，含重试、重定向跟踪、SSRF 防护
   │
   ▼
-2. Parse       ──── documentparse/ Extract text from TXT/MD/HTML/DOCX/PDF
+2. Parse       ──── documentparse/ 从 TXT/MD/HTML/DOCX/PDF 提取文本
   │
   ▼
-3. Describe    ──── imagedescribe/ Vision model → description, OCR, objects, scene
+3. Describe    ──── imagedescribe/ 视觉模型生成描述、OCR、物体、场景
   │
   ▼
-4. Compress    ──── imagecompress/ Downscale & re-encode for model input
+4. Compress    ──── imagecompress/ 缩放与重编码，适配模型输入
   │
   ▼
-5. Chunk       ──── chunker/       Parent/child token chunks via tiktoken
+5. Chunk       ──── chunker/       基于 tiktoken 的 parent/child 分块
   │
   ▼
-6. Embed       ──── (provider)     Generate dense vectors via LLM provider
+6. Embed       ──── (provider)     通过 LLM Provider 生成稠密向量
   │
   ▼
-7. Index       ──── Elasticsearch Bulk upsert into chunk index
+7. Index       ──── Elasticsearch  Bulk upsert 写入 chunk 索引
   │
   ▼
-8. Search      ──── search/        Hybrid vector + BM25 recall
+8. Search      ──── search/        向量 + BM25 混合召回
   │
   ▼
-9. Rerank      ──── search/        Score normalization & reranker
+9. Rerank      ──── search/        分数归一化与重排序
   │
   ▼
-10. Classify   ──── classifier/    LLM auto-tagging (non-blocking)
+10. Classify   ──── classifier/    LLM 自动标签（非阻塞）
   │
   ▼
-11. Answer     ──── agent/         Cite references, generate response
+11. Answer     ──── agent/         引用参考，生成回答
 ```
 
-All prompt templates live in `internal/core/rag/prompt/` and are rendered through `internal/core/prompt/`.
+所有提示词模板位于 `internal/core/rag/prompt/`，由 `internal/core/prompt/` 统一渲染。
 
-## Configuration
+## 配置
 
-Key sections in `configs/config.yml`:
+`configs/config.yml` 关键配置节：
 
 ```yaml
 database:
@@ -188,82 +189,82 @@ rag:
   embedding_dim: 1024
 
 llm:
-  provider: "anthropic"   # or "openai"
+  provider: "anthropic"   # 或 "openai"
   api_key: "${LLM_API_KEY}"
 
 jwt:
   secret: "${JWT_SECRET}"
 
 storage:
-  driver: "cos"           # or "local"
+  driver: "cos"           # 或 "local"
 ```
 
-## Development
+## 开发
 
-### Code generation
+### 代码生成
 
-Cove ships a built-in codegen (`cmd/codegen/`) that scans Go annotations to produce:
+Cove 内置代码生成器（`cmd/codegen/`），扫描 Go 注解自动生成：
 
-| Command | Output |
+| 命令 | 产物 |
 |---|---|
-| `make gen-route` | Router registration |
-| `make gen-repository MODEL=User LABEL=用户` | Type-safe repository |
-| `make gen-docs` | OpenAPI 3.0 spec |
+| `make gen-route` | Gin 路由注册 |
+| `make gen-repository MODEL=User LABEL=用户` | 类型安全仓储 |
+| `make gen-docs` | OpenAPI 3.0 规范 |
 
-### API routes
+### API 路由
 
-All routes are mounted under `/api/`:
+所有路由挂载在 `/api/` 下：
 
-| Domain | Description |
+| 路径 | 说明 |
 |---|---|
-| `/api/health` | Health check (public) |
-| `/api/auth` | Registration / login |
-| `/api/models` | Model configuration |
-| `/api/chat` | Streaming conversation |
-| `/api/conversations` | Conversation management |
-| `/api/documents` | Document CRUD |
-| `/api/knowledge-bases` | Knowledge base management |
-| `/api/agents` | Agent configuration |
-| `/api/mcp-servers` | MCP server integration |
+| `/api/health` | 健康检查（公开） |
+| `/api/auth` | 注册 / 登录 |
+| `/api/models` | 模型配置 |
+| `/api/chat` | 流式对话 |
+| `/api/conversations` | 会话管理 |
+| `/api/documents` | 文档 CRUD |
+| `/api/knowledge-bases` | 知识库管理 |
+| `/api/agents` | Agent 配置 |
+| `/api/mcp-servers` | MCP 服务集成 |
 
-Authenticated routes are protected by JWT middleware.
+已认证路由受 JWT 中间件保护。
 
-### Async tasks
+### 异步任务
 
-Powered by asynq + Redis:
+基于 asynq + Redis 驱动：
 
-| Task | Description |
+| 任务 | 说明 |
 |---|---|
-| `parse:document` | Document parsing & chunking |
-| `parse:image` | Image content extraction |
-| `memory:extract` | Memory extraction |
-| `memory:consolidate` | Daily memory consolidation |
-| `research:run` | Research task execution |
+| `parse:document` | 文档解析与分块 |
+| `parse:image` | 图片内容提取 |
+| `memory:extract` | 记忆提取 |
+| `memory:consolidate` | 每日记忆合并 |
+| `research:run` | 研究任务执行 |
 
-## Project structure
+## 项目结构
 
 ```
 .
-├── cmd/                # Entrypoints
-│   ├── api/            # HTTP server
-│   ├── worker/         # Background processor
-│   ├── scheduler/      # Cron scheduler
-│   ├── migration/      # Database migrations
-│   └── codegen/        # Code generation tool
-├── configs/            # Configuration files
+├── cmd/                # 入口
+│   ├── api/            # HTTP 服务
+│   ├── worker/         # 后台处理器
+│   ├── scheduler/      # Cron 调度器
+│   ├── migration/      # 数据库迁移
+│   └── codegen/        # 代码生成工具
+├── configs/            # 配置模板
 ├── deployments/        # Docker Compose
-├── db/                 # Migrations & queries
-├── docs/               # Architecture & OpenAPI
+├── db/                 # 迁移脚本 & 查询
+├── docs/               # 架构文档 & OpenAPI
 ├── internal/
-│   ├── config/         # Config loader
-│   ├── core/           # Core business capabilities
-│   ├── domain/         # Domain types & events
-│   ├── infrastructure/ # External adapters
-│   ├── logic/          # Business logic layer
-│   ├── models/         # GORM models
-│   ├── repository/     # Data access
-│   ├── svc/            # Service context (DI)
-│   └── transport/http/ # HTTP transport layer
+│   ├── config/         # 配置加载
+│   ├── core/           # 核心业务能力
+│   ├── domain/         # 领域类型 & 事件
+│   ├── infrastructure/ # 外部适配器
+│   ├── logic/          # 业务逻辑层
+│   ├── models/         # GORM 模型
+│   ├── repository/     # 数据访问
+│   ├── svc/            # ServiceContext (DI)
+│   └── transport/http/ # HTTP 传输层
 ├── Makefile
 └── README.md
 ```
@@ -271,5 +272,5 @@ Powered by asynq + Redis:
 ---
 
 <p align="center">
-  Built with Go · LLM-powered · Open for contributions
+  Built with Go · LLM-powered · 欢迎贡献
 </p>

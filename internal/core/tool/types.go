@@ -15,6 +15,17 @@ type Descriptor struct {
 	Annotations  map[string]any `json:"annotations,omitempty"`
 }
 
+// SetDescriptor 描述一个工具集。
+//
+// Name 必须非空，并在同一个 Catalog 中唯一。Tags 可用于调用方做业务侧筛选，
+// Annotations 用于承载 UI 或模型提示所需的附加元数据。
+type SetDescriptor struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Tags        []string       `json:"tags,omitempty"`
+	Annotations map[string]any `json:"annotations,omitempty"`
+}
+
 // Input 表示传给工具的通用结构化参数。
 type Input map[string]any
 
@@ -48,5 +59,23 @@ type Tool interface {
 	Invoke(ctx context.Context, input Input) (Output, error)
 }
 
+// ToolSet 表示一组可展开成 Tool 的工具集合。
+//
+// ToolSet 只负责组织工具，不负责执行工具。调用方可以把 ToolSet 注册到 Catalog，
+// 再通过 Catalog.BuildRegistry 生成扁平 Registry 交给 Runner 调用。
+type ToolSet interface {
+	Describe(ctx context.Context) (SetDescriptor, error)
+	Tools(ctx context.Context) ([]Tool, error)
+}
+
 // InvokeFunc 是 FuncTool 使用的函数签名。
 type InvokeFunc func(ctx context.Context, input Input) (Output, error)
+
+// Selection 描述从 Catalog 中选择哪些工具集和工具。
+//
+// SetNames 为空表示不限制工具集。ToolNames 为空表示不限制工具。两个字段都为空时，
+// Catalog.BuildRegistry 会展开全部工具集和全部工具。
+type Selection struct {
+	SetNames  []string
+	ToolNames []string
+}

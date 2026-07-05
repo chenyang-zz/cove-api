@@ -1,0 +1,29 @@
+README.md
+  s_735be408a64636::t_728ad312c6ea6e 1-5,117,277-288,291-294
+docs/architecture.md
+  s_4d04e4e66dd9f7::t_d9eb66e0fc2a22 1-4,96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5a81370ffa54686472dfef6d1b0b869003e417f7",
+  "prompts": {},
+  "sessions": {
+    "s_4d04e4e66dd9f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_4d04e4e66dd9f7",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    },
+    "s_735be408a64636": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f306c-e27f-71d1-b0d5-e5abc482b074",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

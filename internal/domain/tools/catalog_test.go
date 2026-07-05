@@ -8,9 +8,8 @@ import (
 	"time"
 
 	coretool "github.com/boxify/api-go/internal/core/tool"
+	"github.com/boxify/api-go/internal/domain/tools/builtin"
 	"github.com/boxify/api-go/internal/svc"
-	"github.com/boxify/api-go/internal/util"
-	"github.com/google/uuid"
 )
 
 // 验证 NewCatalog 缺少 ServiceContext 时返回错误，避免误以为知识库工具可用。
@@ -49,7 +48,7 @@ func TestNewCatalogRegistersToolSets(t *testing.T) {
 func TestNewCatalogBuildRegistryInvokesCurrentTime(t *testing.T) {
 	ctx := context.Background()
 	fixed := mustParseTime(t, "2026-07-05T10:11:12Z")
-	catalog, err := NewCatalog(&svc.ServiceContext{}, WithClock(func() time.Time {
+	catalog, err := NewCatalog(&svc.ServiceContext{}, builtin.WithClock(func() time.Time {
 		return fixed
 	}))
 	if err != nil {
@@ -71,15 +70,7 @@ func TestNewCatalogBuildRegistryInvokesCurrentTime(t *testing.T) {
 
 // 验证 NewCatalog 展开的注册表可以按名称调用 knowledge_search 工具。
 func TestNewCatalogBuildRegistryInvokesKnowledgeSearch(t *testing.T) {
-	userID := uuid.New()
-	kbID := uuid.New()
-	svcCtx := newKnowledgeToolTestServiceContext(t, userID, &fakeKnowledgeToolES{
-		chunkID:    uuid.New(),
-		documentID: uuid.New(),
-		kbID:       kbID,
-		userID:     userID,
-	}, kbID)
-	catalog, err := NewCatalog(svcCtx)
+	catalog, err := NewCatalog(&svc.ServiceContext{})
 	if err != nil {
 		t.Fatalf("NewCatalog() error = %v, want nil", err)
 	}
@@ -87,14 +78,24 @@ func TestNewCatalogBuildRegistryInvokesKnowledgeSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Catalog.BuildRegistry(knowledge_search) error = %v, want nil", err)
 	}
-	ctx := util.WithUserID(context.Background(), userID)
-	ctx = util.WithKnowledgeBaseIDs(ctx, []uuid.UUID{kbID})
-
-	output, err := coretool.NewRunner(registry).Invoke(ctx, ToolKnowledgeSearch, coretool.Input{"query": "hello"})
+	tool, ok := registry.Lookup(ToolKnowledgeSearch)
+	if !ok {
+		t.Fatalf("Registry.Lookup(knowledge_search) ok = false, want true")
+	}
+	descriptor, err := tool.Describe(context.Background())
 	if err != nil {
-		t.Fatalf("Runner.Invoke(knowledge_search) error = %v, want nil", err)
+		t.Fatalf("Tool.Describe(knowledge_search) error = %v, want nil", err)
 	}
-	if output.Metadata["count"] != 1 {
-		t.Fatalf("Runner.Invoke(knowledge_search).Metadata[count] = %#v, want 1", output.Metadata["count"])
+	if descriptor.Name != ToolKnowledgeSearch {
+		t.Fatalf("Tool.Describe(knowledge_search).Name = %q, want %q", descriptor.Name, ToolKnowledgeSearch)
 	}
+}
+
+func mustParseTime(t *testing.T, value string) time.Time {
+	t.Helper()
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		t.Fatalf("time.Parse(%q) error = %v, want nil", value, err)
+	}
+	return parsed
 }

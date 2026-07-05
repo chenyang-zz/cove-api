@@ -13,7 +13,9 @@ import (
 // ErrInvalidTimezone 表示调用方传入了无法加载的 IANA 时区名称。
 var ErrInvalidTimezone = errors.New("invalid timezone")
 
-func newCurrentTimeTool(opts options) coretool.Tool {
+// NewCurrentTimeTool 创建内置 current_time 工具。
+func NewCurrentTimeTool(opts ...Option) coretool.Tool {
+	cfg := applyOptions(opts...)
 	return coretool.NewFuncTool(coretool.Descriptor{
 		Name:        ToolCurrentTime,
 		Description: "获取当前时间，可按指定 IANA 时区返回。",
@@ -34,7 +36,7 @@ func newCurrentTimeTool(opts options) coretool.Tool {
 		if err != nil {
 			return coretool.Output{}, err
 		}
-		now := opts.clock().In(location)
+		now := cfg.clock().In(location)
 		formatted := now.Format(time.RFC3339)
 		return coretool.Output{
 			Text: formatted,

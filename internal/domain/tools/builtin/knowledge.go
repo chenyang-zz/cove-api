@@ -56,7 +56,8 @@ type knowledgeTagResolution struct {
 	Error         string
 }
 
-func newKnowledgeSearchTool(svcCtx *svc.ServiceContext) coretool.Tool {
+// NewKnowledgeSearchTool 创建内置 knowledge_search 工具。
+func NewKnowledgeSearchTool(svcCtx *svc.ServiceContext) coretool.Tool {
 	return coretool.NewFuncTool(coretool.Descriptor{
 		Name:        ToolKnowledgeSearch,
 		Description: "在当前上下文授权的知识库范围内检索相关内容。",

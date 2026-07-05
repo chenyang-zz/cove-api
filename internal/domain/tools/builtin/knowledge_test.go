@@ -22,7 +22,7 @@ import (
 
 // 验证 knowledge_search 描述不会暴露 user_id 或 kb_ids 参数，范围只能来自 context。
 func TestKnowledgeSearchDescriptorHidesTrustedContextFields(t *testing.T) {
-	tool := newKnowledgeSearchTool(&svc.ServiceContext{})
+	tool := NewKnowledgeSearchTool(&svc.ServiceContext{})
 
 	descriptor, err := tool.Describe(context.Background())
 	if err != nil {
@@ -57,7 +57,7 @@ func TestKnowledgeSearchToolAppliesExactMatchedTagFilter(t *testing.T) {
 	ctx := util.WithUserID(context.Background(), userID)
 	ctx = util.WithKnowledgeBaseIDs(ctx, []uuid.UUID{kbID})
 
-	output, err := newKnowledgeSearchTool(svcCtx).Invoke(ctx, coretool.Input{
+	output, err := NewKnowledgeSearchTool(svcCtx).Invoke(ctx, coretool.Input{
 		"query": "  hello  ",
 		"top_k": float64(3),
 		"tags":  []any{"  重要  ", ""},
@@ -112,7 +112,7 @@ func TestKnowledgeSearchToolResolvesApproximateTagsWithEmbedding(t *testing.T) {
 	}}
 	ctx := util.WithKnowledgeBaseIDs(util.WithUserID(context.Background(), userID), []uuid.UUID{kbID})
 
-	output, err := newKnowledgeSearchTool(svcCtx).Invoke(ctx, coretool.Input{"query": "hello", "tags": []any{"报销"}})
+	output, err := NewKnowledgeSearchTool(svcCtx).Invoke(ctx, coretool.Input{"query": "hello", "tags": []any{"报销"}})
 	if err != nil {
 		t.Fatalf("knowledge_search Invoke(approximate tag) error = %v, want nil", err)
 	}
@@ -143,7 +143,7 @@ func TestKnowledgeSearchToolSkipsTagFilterWhenTagsDoNotMatch(t *testing.T) {
 	svcCtx.TagRepo = &fakeKnowledgeToolTagRepo{rows: []*models.Tag{{ID: uuid.New(), UserID: userID, Name: "财务"}}}
 	ctx := util.WithKnowledgeBaseIDs(util.WithUserID(context.Background(), userID), []uuid.UUID{kbID})
 
-	output, err := newKnowledgeSearchTool(svcCtx).Invoke(ctx, coretool.Input{"query": "hello", "tags": []any{"陌生"}})
+	output, err := NewKnowledgeSearchTool(svcCtx).Invoke(ctx, coretool.Input{"query": "hello", "tags": []any{"陌生"}})
 	if err != nil {
 		t.Fatalf("knowledge_search Invoke(unmatched tag) error = %v, want nil", err)
 	}
@@ -168,7 +168,7 @@ func TestKnowledgeSearchToolSkipsTagFilterWhenTagRepoFails(t *testing.T) {
 	svcCtx.TagRepo = &fakeKnowledgeToolTagRepo{err: errors.New("tag repo unavailable")}
 	ctx := util.WithKnowledgeBaseIDs(util.WithUserID(context.Background(), userID), []uuid.UUID{kbID})
 
-	output, err := newKnowledgeSearchTool(svcCtx).Invoke(ctx, coretool.Input{"query": "hello", "tags": []any{"重要"}})
+	output, err := NewKnowledgeSearchTool(svcCtx).Invoke(ctx, coretool.Input{"query": "hello", "tags": []any{"重要"}})
 	if err != nil {
 		t.Fatalf("knowledge_search Invoke(tag repo error) error = %v, want nil", err)
 	}
@@ -189,7 +189,7 @@ func TestKnowledgeSearchToolSkipsTagFilterWhenTagRepoFails(t *testing.T) {
 
 // 验证知识库工具对空 query、非法 top_k 和非法 tags 返回错误。
 func TestKnowledgeSearchToolRejectsInvalidInput(t *testing.T) {
-	tool := newKnowledgeSearchTool(&svc.ServiceContext{})
+	tool := NewKnowledgeSearchTool(&svc.ServiceContext{})
 
 	cases := []struct {
 		name  string
@@ -217,12 +217,12 @@ func TestKnowledgeSearchToolRequiresTrustedContext(t *testing.T) {
 	kbID := uuid.New()
 	svcCtx := newKnowledgeToolTestServiceContext(t, userID, &fakeKnowledgeToolES{kbID: kbID, userID: userID}, kbID)
 
-	_, err := newKnowledgeSearchTool(svcCtx).Invoke(context.Background(), coretool.Input{"query": "hello"})
+	_, err := NewKnowledgeSearchTool(svcCtx).Invoke(context.Background(), coretool.Input{"query": "hello"})
 	if xerr.From(err).Kind != xerr.KindUnauthorized {
 		t.Fatalf("knowledge_search missing user error = %v, want unauthorized", err)
 	}
 	ctx := util.WithUserID(context.Background(), userID)
-	_, err = newKnowledgeSearchTool(svcCtx).Invoke(ctx, coretool.Input{"query": "hello"})
+	_, err = NewKnowledgeSearchTool(svcCtx).Invoke(ctx, coretool.Input{"query": "hello"})
 	if xerr.From(err).Kind != xerr.KindBadRequest {
 		t.Fatalf("knowledge_search missing kb ids error = %v, want bad_request", err)
 	}
@@ -237,7 +237,7 @@ func TestKnowledgeSearchToolValidatesKnowledgeBaseOwnership(t *testing.T) {
 	ctx := util.WithUserID(context.Background(), userID)
 	ctx = util.WithKnowledgeBaseIDs(ctx, []uuid.UUID{ownedKBID, missingKBID})
 
-	_, err := newKnowledgeSearchTool(svcCtx).Invoke(ctx, coretool.Input{"query": "hello"})
+	_, err := NewKnowledgeSearchTool(svcCtx).Invoke(ctx, coretool.Input{"query": "hello"})
 	if xerr.From(err).Kind != xerr.KindNotFound {
 		t.Fatalf("knowledge_search ownership error = %v, want not_found", err)
 	}

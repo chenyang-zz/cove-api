@@ -12,7 +12,7 @@ import (
 
 // 验证 current_time 描述使用统一 Schema 字段表达调用 schema，不再暴露输入/输出 schema 字段。
 func TestCurrentTimeDescriptorUsesSchema(t *testing.T) {
-	tool := newCurrentTimeTool(options{clock: time.Now})
+	tool := NewCurrentTimeTool(WithClock(time.Now))
 
 	descriptor, err := tool.Describe(context.Background())
 	if err != nil {
@@ -39,9 +39,9 @@ func TestCurrentTimeDescriptorUsesSchema(t *testing.T) {
 func TestCurrentTimeUsesUTCByDefault(t *testing.T) {
 	ctx := context.Background()
 	fixed := mustParseTime(t, "2026-07-05T10:11:12Z")
-	tool := newCurrentTimeTool(options{clock: func() time.Time {
+	tool := NewCurrentTimeTool(WithClock(func() time.Time {
 		return fixed
-	}})
+	}))
 
 	output, err := tool.Invoke(ctx, nil)
 	if err != nil {
@@ -62,9 +62,9 @@ func TestCurrentTimeUsesUTCByDefault(t *testing.T) {
 func TestCurrentTimeConvertsIanaTimezone(t *testing.T) {
 	ctx := context.Background()
 	fixed := mustParseTime(t, "2026-07-05T10:11:12Z")
-	tool := newCurrentTimeTool(options{clock: func() time.Time {
+	tool := NewCurrentTimeTool(WithClock(func() time.Time {
 		return fixed
-	}})
+	}))
 
 	output, err := tool.Invoke(ctx, coretool.Input{"timezone": "Asia/Shanghai"})
 	if err != nil {
@@ -84,9 +84,9 @@ func TestCurrentTimeConvertsIanaTimezone(t *testing.T) {
 // 验证 current_time 对无效时区返回错误，避免静默使用错误时间。
 func TestCurrentTimeRejectsInvalidTimezone(t *testing.T) {
 	ctx := context.Background()
-	tool := newCurrentTimeTool(options{clock: func() time.Time {
+	tool := NewCurrentTimeTool(WithClock(func() time.Time {
 		return mustParseTime(t, "2026-07-05T10:11:12Z")
-	}})
+	}))
 
 	_, err := tool.Invoke(ctx, coretool.Input{"timezone": "Mars/Base"})
 	if err == nil {

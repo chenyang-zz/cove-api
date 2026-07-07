@@ -1,0 +1,43 @@
+internal/core/rag/search/types.go
+  s_a5f282227fb606::t_522759103d1dc9 69,107-115,207-237
+internal/core/rag/search/options.go
+  h_e1f1392360ad67 31-33
+  s_a5f282227fb606::t_366b47b7ca5555 160-165
+  s_a5f282227fb606::t_ee294127a2407d 166-168
+internal/core/rag/search/README.md
+  s_a5f282227fb606::t_0c8fd4290f3231 33-34,37,74-91,103,116,128,153-157
+internal/core/rag/search/search.go
+  h_e1f1392360ad67 197,205,225,246,251
+  s_a5f282227fb606::t_6b64b47d3c1a8d 54-55,60,116,131-138,173-196,198-204,206-224,226-245,247-250,252-255,298
+internal/logic/document/search_documents.go
+  s_a5f282227fb606::t_98a5fab49c9d0d 46,54
+internal/core/rag/search/search_test.go
+  s_a5f282227fb606::t_76c19e7b96d07f 479-529,531-532,535-561
+  s_a5f282227fb606::t_6cbf45286f8e75 343,346-347,380,419,437,458-459,649-650,725,756-758
+  s_a5f282227fb606::t_73344190e4b35e 84,110,142-144,150,165,182,229,248,261,298,316,351,368,385,424,442,562,584,623,654,674,719
+  s_a5f282227fb606::t_35c57817e79c13 6,530
+  s_a5f282227fb606::t_48f64fe36a49b1 533-534
+internal/domain/tools/builtin/knowledge.go
+  s_a5f282227fb606::t_98a5fab49c9d0d 127,135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8eedfe49685c3e8b9507436484335b2dac818b18",
+  "prompts": {},
+  "humans": {
+    "h_e1f1392360ad67": {
+      "author": "chenyang <904852749@qq.com>"
+    }
+  },
+  "sessions": {
+    "s_a5f282227fb606": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f13c4-cb77-7061-8d78-bfdb2b2034a3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

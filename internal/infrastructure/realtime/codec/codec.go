@@ -25,6 +25,15 @@ type errorEventData struct {
 	Message string `json:"message"`
 }
 
+type toolEventData struct {
+	Tool        string         `json:"tool"`
+	Input       map[string]any `json:"input,omitempty"`
+	Observation string         `json:"observation,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	Iteration   int            `json:"iteration,omitempty"`
+	ToolCallID  string         `json:"tool_call_id,omitempty"`
+}
+
 func MarshalEvent(event types.Event) ([]byte, error) {
 	var data any = map[string]any{}
 	switch e := event.(type) {
@@ -34,6 +43,15 @@ func MarshalEvent(event types.Event) ([]byte, error) {
 		data = metaEventData{ConversationID: e.ConversationID, Title: e.Title}
 	case *types.ErrorEvent:
 		data = errorEventData{Message: e.Message}
+	case *types.ToolEvent:
+		data = toolEventData{
+			Tool:        e.Tool,
+			Input:       e.Input,
+			Observation: e.Observation,
+			Error:       e.Error,
+			Iteration:   e.Iteration,
+			ToolCallID:  e.ToolCallID,
+		}
 	}
 
 	return json.Marshal(struct {
@@ -76,6 +94,18 @@ func UnmarshalEvent(payload []byte) (types.Event, error) {
 			return nil, err
 		}
 		return types.NewErrorEvent(data.Message), nil
+	case types.EventTypeToolCall:
+		var data toolEventData
+		if err := json.Unmarshal(envelope.Data, &data); err != nil {
+			return nil, err
+		}
+		return types.NewToolCallEvent(data.Tool, data.Input, data.Iteration, data.ToolCallID), nil
+	case types.EventTypeToolResult:
+		var data toolEventData
+		if err := json.Unmarshal(envelope.Data, &data); err != nil {
+			return nil, err
+		}
+		return types.NewToolResultEvent(data.Tool, data.Input, data.Observation, data.Error, data.Iteration, data.ToolCallID), nil
 	case types.EventTypePing:
 		return types.NewPingEvent(), nil
 	default:

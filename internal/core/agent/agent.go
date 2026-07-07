@@ -44,8 +44,8 @@ func New(client llm.Client, registry *coretool.Registry, opts ...Option) *Agent 
 		maxIterations:       defaultMaxIterations,
 		observationMaxRunes: defaultObservationMaxRunes,
 		systemPrompt:        defaultSystemPrompt,
-		toolCallingEnabled:  true,
-		fallbackToReAct:     true,
+		toolCallingEnabled:  defaultToolCallingEnabled,
+		fallbackToReAct:     defaultFallbackToReAct,
 	}
 	for _, opt := range opts {
 		if opt != nil {

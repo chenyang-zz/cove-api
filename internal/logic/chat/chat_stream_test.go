@@ -17,7 +17,6 @@ import (
 	"github.com/boxify/api-go/internal/repository"
 	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/request"
-	"github.com/boxify/api-go/internal/util"
 	"github.com/boxify/api-go/internal/xerr"
 	"github.com/google/uuid"
 )
@@ -117,29 +116,39 @@ func TestChatStreamSavesPartialAssistantMessageOnGenerationError(t *testing.T) {
 	}
 }
 
-// 验证知识库范围只选取开启对话的知识库，并写入工具运行 context。
-func TestChatToolContextUsesEnabledKnowledgeBases(t *testing.T) {
+// 验证 ChatStream 会把工具开始和结束 Flow 消息转换为实时事件，并把工具结果写入消息元数据。
+func TestChatStreamPublishesToolEventsAndStoresToolMetadata(t *testing.T) {
 	userID := uuid.New()
-	enabledID := uuid.New()
-	disabledID := uuid.New()
-	svcCtx := &svc.ServiceContext{KnowledgeBaseRepo: &fakeChatKnowledgeBaseRepo{rows: []*models.KnowledgeBase{
-		{ID: enabledID, UserID: userID, ChatEnabled: true},
-		{ID: disabledID, UserID: userID, ChatEnabled: false},
-	}}}
+	llmClient := &fakeChatLLMClient{invokeResponses: []fakeInvokeResponse{
+		{text: "Thought: need time\nAction: current_time\nAction Input: {}"},
+		{text: "Thought: observed\nFinal Answer: 工具回复"},
+	}}
+	svcCtx := newChatStreamTestServiceContext(t, userID, llmClient)
+	logic := NewChatStreamLogic(context.Background(), svcCtx)
 
-	ctx, kbIDs, err := chatToolContext(context.Background(), svcCtx, userID, true)
+	events, err := logic.ChatStream(userID, &request.ChatStreamRequest{Message: "现在几点"})
 	if err != nil {
-		t.Fatalf("chatToolContext error = %v, want nil", err)
+		t.Fatalf("ChatStream(tool path) error = %v, want nil", err)
 	}
-	if !slices.Equal(kbIDs, []uuid.UUID{enabledID}) {
-		t.Fatalf("chatToolContext kbIDs = %#v, want enabled only", kbIDs)
+	got := collectChatEvents(t, events)
+	if !hasChatEvent(got, types.EventTypeToolCall) || !hasChatEvent(got, types.EventTypeToolResult) || !hasChatEvent(got, types.EventTypeDone) {
+		t.Fatalf("ChatStream events = %#v, want tool_call/tool_result/done", eventNames(got))
 	}
-	got, err := util.KnowledgeBaseIDsFromContext(ctx)
-	if err != nil {
-		t.Fatalf("KnowledgeBaseIDsFromContext error = %v, want nil", err)
+	toolResult, ok := firstToolEvent(got, types.EventTypeToolResult)
+	if !ok || toolResult.Tool != "current_time" || toolResult.Observation == "" || toolResult.Error != "" {
+		t.Fatalf("tool result event = %#v, want current_time observation without error", toolResult)
 	}
-	if !slices.Equal(got, []uuid.UUID{enabledID}) {
-		t.Fatalf("context kbIDs = %#v, want enabled only", got)
+
+	msgRepo := svcCtx.MessageRepo.(*fakeChatMessageRepo)
+	if len(msgRepo.rows) != 2 {
+		t.Fatalf("messages len = %d, want 2", len(msgRepo.rows))
+	}
+	assistant := msgRepo.rows[1]
+	if assistant.MetaData == nil || len(assistant.MetaData.ToolCalls) != 1 {
+		t.Fatalf("assistant metadata = %+v, want one tool call", assistant.MetaData)
+	}
+	if assistant.MetaData.ToolCalls[0].Tool != "current_time" || assistant.MetaData.ToolCalls[0].Observation == "" {
+		t.Fatalf("tool metadata = %+v, want current_time observation", assistant.MetaData.ToolCalls[0])
 	}
 }
 
@@ -163,10 +172,10 @@ func TestResolveChatRuntimeConfigUsesRequestKnowledgeOverride(t *testing.T) {
 	}
 }
 
-// 验证 resolveChatRuntimeConfig 会在逻辑层为温度参数提供业务默认值。
-func TestResolveChatRuntimeConfigDefaultsTemperature(t *testing.T) {
-	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{}, &models.AgentConfig{Temperature: 0.4}); got.Temperature != 0.4 {
-		t.Fatalf("resolveChatRuntimeConfig(agent temperature).Temperature = %v, want 0.4", got.Temperature)
+// 验证 resolveChatRuntimeConfig 会在 logic 层合并温度默认值和系统提示词。
+func TestResolveChatRuntimeConfigDefaultsTemperatureAndPrompt(t *testing.T) {
+	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{}, &models.AgentConfig{Temperature: 0.4, SystemPrompt: " prompt "}); got.Temperature != 0.4 || got.SystemPrompt != "prompt" {
+		t.Fatalf("resolveChatRuntimeConfig(agent config) = %+v, want temperature 0.4 and trimmed prompt", got)
 	}
 	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{}, &models.AgentConfig{}); got.Temperature != defaultChatTemperature {
 		t.Fatalf("resolveChatRuntimeConfig(default temperature).Temperature = %v, want %v", got.Temperature, defaultChatTemperature)
@@ -237,6 +246,16 @@ func eventNames(events []types.Event) []string {
 		out = append(out, event.EventName())
 	}
 	return out
+}
+
+func firstToolEvent(events []types.Event, eventType string) (*types.ToolEvent, bool) {
+	for _, event := range events {
+		toolEvent, ok := event.(*types.ToolEvent)
+		if ok && toolEvent.EventName() == eventType {
+			return toolEvent, true
+		}
+	}
+	return nil, false
 }
 
 type fakeInvokeResponse struct {

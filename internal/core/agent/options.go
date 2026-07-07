@@ -8,6 +8,8 @@ import (
 const (
 	defaultMaxIterations       = 6
 	defaultObservationMaxRunes = 4000
+	defaultToolCallingEnabled  = true
+	defaultFallbackToReAct     = true
 )
 
 // Option 配置 Agent 的长期行为。

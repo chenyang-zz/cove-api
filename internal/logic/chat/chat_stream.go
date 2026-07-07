@@ -6,17 +6,15 @@ import (
 
 	"log/slog"
 
-	coreagent "github.com/boxify/api-go/internal/core/agent"
 	"github.com/boxify/api-go/internal/core/llm"
-	coretool "github.com/boxify/api-go/internal/core/tool"
-	domaintools "github.com/boxify/api-go/internal/domain/tools"
+	flow "github.com/boxify/api-go/internal/domain/flow"
+	flowchat "github.com/boxify/api-go/internal/domain/flow/chat"
 	"github.com/boxify/api-go/internal/domain/types"
 	"github.com/boxify/api-go/internal/infrastructure/realtime"
 	"github.com/boxify/api-go/internal/models"
 	"github.com/boxify/api-go/internal/observability/xlog"
 	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/request"
-	"github.com/boxify/api-go/internal/util"
 	"github.com/boxify/api-go/internal/xerr"
 	"github.com/google/uuid"
 )
@@ -134,119 +132,115 @@ func (l *ChatStreamLogic) runChatTurnBG(
 	attachments []*types.MessageAttachment,
 ) {
 	topic := realtime.ConversationTopic(conversationID)
+
+	// 检查会话存在
 	if _, err := l.svcCtx.ConversationRepo.FindByID(ctx, userID, conversationID); err != nil {
 		_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewErrorEvent("会话不存在"))
 		return
 	}
-
-	result, err := l.generateAssistant(ctx, userID, conversationID, userMessageID, input, attachments)
+	agentConfig, err := l.chatAgentConfig(ctx, userID)
 	if err != nil {
-		if strings.TrimSpace(result.Partial) != "" {
-			if _, saveErr := l.svcCtx.MessageRepo.Create(ctx, userID, &models.Message{
-				ConversationID: conversationID,
-				Role:           string(llm.AssistantRole),
-				Content:        strings.TrimSpace(result.Partial),
-				MetaData:       &models.MessageMetaData{ToolCalls: result.ToolCalls, Interrupted: true},
-			}); saveErr != nil {
-				l.log.WarnContext(ctx, "保存部分回复失败", slog.String("error", saveErr.Error()))
-			}
-		}
+		l.log.WarnContext(ctx, "获取聊天 Agent 配置失败", slog.String("error", err.Error()))
+		_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewErrorEvent("生成失败："+err.Error()))
+		return
+	}
+	runtimeConfig := resolveChatRuntimeConfig(input, agentConfig)
+
+	messageCh, err := flowchat.NewOrchestrator(l.svcCtx).Run(ctx, flowchat.Input{
+		UserID:               userID,
+		ConversationID:       conversationID,
+		CurrentUserMessageID: userMessageID,
+		Message:              input.Message,
+		Attachments:          attachments,
+		EnableKnowledge:      runtimeConfig.EnableKnowledge,
+		Temperature:          runtimeConfig.Temperature,
+		SystemPrompt:         runtimeConfig.SystemPrompt,
+	})
+	if err != nil {
 		l.log.WarnContext(ctx, "后台生成回复失败", slog.String("error", err.Error()))
 		_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewErrorEvent("生成失败："+err.Error()))
 		return
 	}
 
-	answer := strings.TrimSpace(result.Answer)
-	assistantMsg, err := l.svcCtx.MessageRepo.Create(ctx, userID, &models.Message{
-		ConversationID: conversationID,
-		Role:           string(llm.AssistantRole),
-		Content:        answer,
-		MetaData:       &models.MessageMetaData{ToolCalls: result.ToolCalls},
-	})
-	if err != nil {
-		l.log.WarnContext(ctx, "保存AI回复失败", slog.String("error", err.Error()))
-		_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewErrorEvent("保存回复失败："+err.Error()))
-		return
+	var assistantMessageID string
+	toolCalls := []models.MessageToolCallMeta{}
+	for message := range messageCh {
+		switch msg := message.(type) {
+		case *flow.AssistantMessage:
+			answer := strings.TrimSpace(msg.Answer)
+			assistantMsg, saveErr := l.svcCtx.MessageRepo.Create(ctx, userID, &models.Message{
+				ConversationID: conversationID,
+				Role:           string(llm.AssistantRole),
+				Content:        answer,
+				MetaData:       &models.MessageMetaData{ToolCalls: toolCalls},
+			})
+			if saveErr != nil {
+				l.log.WarnContext(ctx, "保存AI回复失败", slog.String("error", saveErr.Error()))
+				_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewErrorEvent("保存回复失败："+saveErr.Error()))
+				return
+			}
+			assistantMessageID = assistantMsg.ID.String()
+			if answer != "" {
+				_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewTokenEvent(answer))
+			}
+		case *flow.ErrorMessage:
+			partial := strings.TrimSpace(msg.Partial)
+			if partial != "" {
+				if _, saveErr := l.svcCtx.MessageRepo.Create(ctx, userID, &models.Message{
+					ConversationID: conversationID,
+					Role:           string(llm.AssistantRole),
+					Content:        partial,
+					MetaData:       &models.MessageMetaData{ToolCalls: toolCalls, Interrupted: true},
+				}); saveErr != nil {
+					l.log.WarnContext(ctx, "保存部分回复失败", slog.String("error", saveErr.Error()))
+				}
+			}
+			messageText := strings.TrimSpace(msg.Message)
+			if messageText == "" && msg.Err != nil {
+				messageText = msg.Err.Error()
+			}
+			l.log.WarnContext(ctx, "后台生成回复失败", slog.String("error", messageText))
+			_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewErrorEvent("生成失败："+messageText))
+			return
+		case *flow.ToolCallMessage:
+			if msg != nil {
+				_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewToolCallEvent(msg.Tool, cloneFlowInput(msg.Input), msg.Iteration, msg.ToolCallID))
+			}
+		case *flow.ToolResultMessage:
+			if msg != nil {
+				_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewToolResultEvent(msg.Tool, cloneFlowInput(msg.Input), msg.Observation, msg.Error, msg.Iteration, msg.ToolCallID))
+				toolCalls = append(toolCalls, models.MessageToolCallMeta{
+					Tool:        msg.Tool,
+					Input:       cloneFlowInput(msg.Input),
+					Observation: msg.Observation,
+					Iteration:   msg.Iteration,
+				})
+			}
+		case *flow.PartialMessage:
+		case *flow.DoneMessage:
+			_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewDoneEvent(assistantMessageID))
+		default:
+			l.log.WarnContext(ctx, "忽略未知 Flow 消息")
+		}
 	}
-	// TODO: 后续在 ConversationRepository 增加 touch 能力，生成完成后刷新会话 updated_at。
-	if answer != "" {
-		_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewTokenEvent(answer))
-	}
-	_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewDoneEvent(assistantMsg.ID.String()))
 	// TODO: 后续接入记忆萃取、图片入库、情绪分析等副作用，失败不能影响主回复。
 }
 
-type chatGenerationResult struct {
-	Answer    string
-	Partial   string
-	ToolCalls []models.MessageToolCallMeta
+func cloneFlowInput(input map[string]any) map[string]any {
+	if input == nil {
+		return nil
+	}
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
 }
 
 type chatRuntimeConfig struct {
 	EnableKnowledge bool
 	Temperature     float64
-}
-
-// generateAssistant 生成AI回复
-func (l *ChatStreamLogic) generateAssistant(
-	ctx context.Context,
-	userID uuid.UUID,
-	conversationID uuid.UUID,
-	userMessageID uuid.UUID,
-	input *request.ChatStreamRequest,
-	attachments []*types.MessageAttachment,
-) (chatGenerationResult, error) {
-	client, err := svc.ChatClient(ctx, l.svcCtx, userID)
-	if err != nil {
-		return chatGenerationResult{}, err
-	}
-	agentConfig, err := l.chatAgentConfig(ctx, userID)
-	if err != nil {
-		return chatGenerationResult{}, err
-	}
-	runtimeConfig := resolveChatRuntimeConfig(input, agentConfig)
-	history, err := l.historyMessages(ctx, userID, conversationID, userMessageID)
-	if err != nil {
-		return chatGenerationResult{}, err
-	}
-	runCtx, kbIDs, err := chatToolContext(ctx, l.svcCtx, userID, runtimeConfig.EnableKnowledge)
-	if err != nil {
-		return chatGenerationResult{}, err
-	}
-	registry, err := l.chatToolRegistry(runCtx, kbIDs)
-	if err != nil {
-		return chatGenerationResult{}, err
-	}
-
-	hooks := &chatAgentHooks{}
-	options := []coreagent.Option{
-		coreagent.WithHooks(hooks),
-		coreagent.WithModelOptions(llm.WithTemperature(runtimeConfig.Temperature)),
-	}
-	if agentConfig != nil && strings.TrimSpace(agentConfig.SystemPrompt) != "" {
-		options = append(options, coreagent.WithSystemPrompt(strings.TrimSpace(agentConfig.SystemPrompt)))
-	}
-	// TODO: 接入 SkillID 后，将技能 prompt 叠加到 system prompt，并限制工具/知识库范围。
-	// TODO: 接入 ImageKeys 后，按多模态模型路径生成回复；当前仅把 image_keys 保存到用户消息 metadata。
-	// TODO: 接入 EnableMemory/EnableWebSearch 后，分别注入记忆召回和联网搜索工具。
-	result, err := coreagent.New(client, registry, options...).Run(runCtx, coreagent.Input{
-		Query:    composeChatQuery(input.Message, attachments),
-		Messages: history,
-	})
-	out := chatGenerationResult{
-		Partial:   hooks.lastModelOutput,
-		ToolCalls: toolCallsFromAgentSteps(result),
-	}
-	if err != nil {
-		if out.Partial == "" && result != nil {
-			out.Partial = result.Answer
-		}
-		return out, err
-	}
-	if result != nil {
-		out.Answer = result.Answer
-	}
-	return out, nil
+	SystemPrompt    string
 }
 
 // chatAgentConfig 获取Agent配置
@@ -257,7 +251,6 @@ func (l *ChatStreamLogic) chatAgentConfig(ctx context.Context, userID uuid.UUID)
 	config, err := l.svcCtx.AgentConfigRepo.FindByUserID(ctx, userID)
 	if err != nil {
 		if xerr.From(err).Kind == xerr.KindNotFound {
-			// TODO: 后续补默认 AgentConfig 初始化策略，避免每轮靠代码默认值兜底。
 			return nil, nil
 		}
 		return nil, err
@@ -265,79 +258,7 @@ func (l *ChatStreamLogic) chatAgentConfig(ctx context.Context, userID uuid.UUID)
 	return config, nil
 }
 
-// historyMessages 获取会话历史消息
-func (l *ChatStreamLogic) historyMessages(
-	ctx context.Context,
-	userID uuid.UUID,
-	conversationID uuid.UUID,
-	currentUserMessageID uuid.UUID,
-) ([]*llm.Message, error) {
-	rows, err := l.svcCtx.MessageRepo.ListByConversationID(ctx, userID, conversationID)
-	if err != nil {
-		return nil, err
-	}
-	messages := make([]*llm.Message, 0, len(rows))
-	for _, row := range rows {
-		if row == nil || row.ID == currentUserMessageID || strings.TrimSpace(row.Content) == "" {
-			continue
-		}
-		switch row.Role {
-		case string(llm.UserRole):
-			messages = append(messages, llm.UserMessage(row.Content))
-		case string(llm.AssistantRole):
-			messages = append(messages, llm.AssistantMessage(row.Content))
-		}
-	}
-	return messages, nil
-}
-
-// chatToolRegistry 获取工具注册表
-func (l *ChatStreamLogic) chatToolRegistry(
-	ctx context.Context,
-	kbIDs []uuid.UUID,
-) (*coretool.Registry, error) {
-	if l.svcCtx == nil {
-		return coretool.NewRegistry(), nil
-	}
-	catalog, err := domaintools.NewCatalog(l.svcCtx)
-	if err != nil {
-		return nil, err
-	}
-	setNames := []string{domaintools.ToolSetSystem}
-	if len(kbIDs) > 0 {
-		setNames = append(setNames, domaintools.ToolSetKnowledge)
-	}
-	return catalog.BuildRegistry(ctx, coretool.Selection{SetNames: setNames})
-}
-
-// chatToolContext 获取工具上下文
-func chatToolContext(
-	ctx context.Context,
-	svcCtx *svc.ServiceContext,
-	userID uuid.UUID,
-	enableKnowledge bool,
-) (context.Context, []uuid.UUID, error) {
-	ctx = util.WithUserID(ctx, userID)
-	if !enableKnowledge || svcCtx == nil || svcCtx.KnowledgeBaseRepo == nil {
-		return ctx, nil, nil
-	}
-	rows, err := svcCtx.KnowledgeBaseRepo.List(ctx, userID)
-	if err != nil {
-		return ctx, nil, err
-	}
-	kbIDs := make([]uuid.UUID, 0, len(rows))
-	for _, row := range rows {
-		if row != nil && row.ChatEnabled && row.ID != uuid.Nil {
-			kbIDs = append(kbIDs, row.ID)
-		}
-	}
-	if len(kbIDs) == 0 {
-		return ctx, nil, nil
-	}
-	return util.WithKnowledgeBaseIDs(ctx, kbIDs), kbIDs, nil
-}
-
-// resolveChatRuntimeConfig 归一化聊天运行参数，并在逻辑层提供业务默认值兜底。
+// resolveChatRuntimeConfig 归一化聊天运行参数，并在 logic 层提供业务默认值兜底。
 func resolveChatRuntimeConfig(input *request.ChatStreamRequest, agentConfig *models.AgentConfig) chatRuntimeConfig {
 	config := chatRuntimeConfig{
 		EnableKnowledge: false,
@@ -348,70 +269,12 @@ func resolveChatRuntimeConfig(input *request.ChatStreamRequest, agentConfig *mod
 	}
 	if agentConfig != nil {
 		config.EnableKnowledge = agentConfig.EnableKnowledge
+		config.SystemPrompt = strings.TrimSpace(agentConfig.SystemPrompt)
 	}
 	if input != nil && input.EnableKnowledge != nil {
-		// 请求层显式值优先级最高；false 必须能覆盖 AgentConfig 默认开启。
 		config.EnableKnowledge = *input.EnableKnowledge
 	}
 	return config
-}
-
-// composeChatQuery 组合聊天查询
-func composeChatQuery(message string, attachments []*types.MessageAttachment) string {
-	query := strings.TrimSpace(message)
-	if len(attachments) == 0 {
-		return query
-	}
-	parts := []string{query, "\n\n附件内容："}
-	for _, attachment := range attachments {
-		if attachment == nil || strings.TrimSpace(attachment.Content) == "" {
-			continue
-		}
-		name := strings.TrimSpace(attachment.FileName)
-		if name == "" {
-			name = "未命名附件"
-		}
-		parts = append(parts, "\n["+name+"]\n"+strings.TrimSpace(attachment.Content))
-	}
-	return strings.TrimSpace(strings.Join(parts, ""))
-}
-
-// toolCallsFromAgentSteps 从Agent步骤中提取工具调用
-func toolCallsFromAgentSteps(result *coreagent.Result) []models.MessageToolCallMeta {
-	if result == nil {
-		return nil
-	}
-	out := make([]models.MessageToolCallMeta, 0, len(result.Steps))
-	for _, step := range result.Steps {
-		if strings.TrimSpace(step.Action) == "" {
-			continue
-		}
-		out = append(out, models.MessageToolCallMeta{
-			Tool:        step.Action,
-			Input:       map[string]any(step.ActionInput),
-			Observation: step.Observation,
-			Iteration:   step.Iteration,
-		})
-	}
-	return out
-}
-
-type chatAgentHooks struct {
-	coreagent.NoopHooks
-	lastModelOutput string
-}
-
-// AfterModel 调用模型后钩子
-func (h *chatAgentHooks) AfterModel(
-	ctx context.Context,
-	state coreagent.State,
-	output string,
-	modelErr error,
-) error {
-	if strings.TrimSpace(output) != "" {
-		h.lastModelOutput = strings.TrimSpace(output)
-	}
-	return nil
 }
 
 // ensureConversation 确保会话存在

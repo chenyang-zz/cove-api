@@ -9,11 +9,13 @@ package types
 import "github.com/google/uuid"
 
 const (
-	EventTypeToken = "token"
-	EventTypeDone  = "done"
-	EventTypeMeta  = "meta"
-	EventTypeError = "error"
-	EventTypePing  = "_ping"
+	EventTypeToken      = "token"
+	EventTypeDone       = "done"
+	EventTypeMeta       = "meta"
+	EventTypeError      = "error"
+	EventTypeToolCall   = "tool_call"
+	EventTypeToolResult = "tool_result"
+	EventTypePing       = "_ping"
 )
 
 type Event interface {
@@ -38,6 +40,16 @@ type MetaEvent struct {
 	BaseEvent
 	ConversationID uuid.UUID
 	Title          string
+}
+
+type ToolEvent struct {
+	BaseEvent
+	Tool        string
+	Input       map[string]any
+	Observation string
+	Error       string
+	Iteration   int
+	ToolCallID  string
 }
 
 func NewBaseEvent(eventType string) *BaseEvent {
@@ -71,6 +83,28 @@ func NewErrorEvent(message string) *ErrorEvent {
 	return &ErrorEvent{
 		BaseEvent: BaseEvent{Type: EventTypeError},
 		Message:   message,
+	}
+}
+
+func NewToolCallEvent(tool string, input map[string]any, iteration int, toolCallID string) *ToolEvent {
+	return &ToolEvent{
+		BaseEvent:  BaseEvent{Type: EventTypeToolCall},
+		Tool:       tool,
+		Input:      input,
+		Iteration:  iteration,
+		ToolCallID: toolCallID,
+	}
+}
+
+func NewToolResultEvent(tool string, input map[string]any, observation string, errMessage string, iteration int, toolCallID string) *ToolEvent {
+	return &ToolEvent{
+		BaseEvent:   BaseEvent{Type: EventTypeToolResult},
+		Tool:        tool,
+		Input:       input,
+		Observation: observation,
+		Error:       errMessage,
+		Iteration:   iteration,
+		ToolCallID:  toolCallID,
 	}
 }
 

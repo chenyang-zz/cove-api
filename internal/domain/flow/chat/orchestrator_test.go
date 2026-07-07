@@ -95,6 +95,60 @@ func TestOrchestratorRunPassesHistoryAndAttachments(t *testing.T) {
 	}
 }
 
+// 验证点：聊天 Flow 应通过 SystemPrompt 向 ReAct core 注入 Cove 应用身份。
+func TestOrchestratorRunInjectsCoveIdentityThroughSystemPrompt(t *testing.T) {
+	userID := uuid.New()
+	llmClient := &fakeFlowChatLLMClient{invokeResponses: []fakeFlowInvokeResponse{{
+		text: "Thought: done\nFinal Answer: Cove 回复",
+	}}}
+	svcCtx := newFlowChatTestServiceContext(t, userID, llmClient)
+	orchestrator := NewOrchestrator(svcCtx)
+
+	_, err := collectFlowMessages(orchestrator.Run(context.Background(), Input{
+		UserID:               userID,
+		ConversationID:       uuid.New(),
+		CurrentUserMessageID: uuid.New(),
+		Message:              "你好",
+		Temperature:          0.2,
+	}))
+	if err != nil {
+		t.Fatalf("Orchestrator.Run(cove intro) error = %v, want nil", err)
+	}
+	contents := llmClient.messageContents()
+	if !containsFlowText(contents, "你是「Cove」的智能助手") {
+		t.Fatalf("model messages = %#v, want Cove assistant intro", contents)
+	}
+	if containsFlowText(contents, "彗记") {
+		t.Fatalf("model messages = %#v, should not contain old app name", contents)
+	}
+}
+
+// 验证点：聊天 Flow 应把 Cove 身份和用户配置的人设统一通过 SystemPrompt 传给 ReAct。
+func TestOrchestratorRunCombinesCoveIntroAndUserSystemPrompt(t *testing.T) {
+	userID := uuid.New()
+	llmClient := &fakeFlowChatLLMClient{invokeResponses: []fakeFlowInvokeResponse{{
+		text: "Thought: done\nFinal Answer: Cove 回复",
+	}}}
+	svcCtx := newFlowChatTestServiceContext(t, userID, llmClient)
+	orchestrator := NewOrchestrator(svcCtx)
+
+	_, err := collectFlowMessages(orchestrator.Run(context.Background(), Input{
+		UserID:               userID,
+		ConversationID:       uuid.New(),
+		CurrentUserMessageID: uuid.New(),
+		Message:              "你好",
+		Temperature:          0.2,
+		SystemPrompt:         "回答要简洁。",
+	}))
+	if err != nil {
+		t.Fatalf("Orchestrator.Run(combined system prompt) error = %v, want nil", err)
+	}
+	contents := llmClient.messageContents()
+	if !containsFlowText(contents, "你是「Cove」的智能助手") || !containsFlowText(contents, "回答要简洁。") {
+		t.Fatalf("model messages = %#v, want Cove intro and user system prompt", contents)
+	}
+}
+
 // 验证聊天 Flow 开启知识库时只把启用聊天的知识库写入工具上下文。
 func TestOrchestratorRunUsesEnabledKnowledgeBases(t *testing.T) {
 	userID := uuid.New()

@@ -24,7 +24,7 @@ func WithMaxIterations(n int) Option {
 	}
 }
 
-// WithSystemPrompt 设置默认系统提示词。
+// WithSystemPrompt 设置默认附加人设或风格要求。
 func WithSystemPrompt(prompt string) Option {
 	return func(a *Agent) {
 		coreagent.WithSystemPrompt[Decision, Step](prompt)(a.base)

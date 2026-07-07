@@ -24,11 +24,10 @@ type Agent struct {
 // 默认会优先检测 client 是否实现 ToolCallingClient；支持时走模型原生工具调用，否则
 // 退回文本 ReAct。registry 为 nil 时会使用空工具注册表。
 func New(client llm.Client, registry *coretool.Registry, opts ...Option) *Agent {
-	base := coreagent.NewBase[Decision, Step](client, registry, coreagent.WithSystemPrompt[Decision, Step](defaultSystemPrompt))
+	base := coreagent.NewBase[Decision, Step](client, registry)
 	base.SetCloneFuncs(cloneDecision, cloneStep)
 	a := &Agent{
 		base:               base,
-		promptBuilder:      NewReActPromptBuilder(),
 		parser:             NewReActParser(),
 		toolCallingEnabled: defaultToolCallingEnabled,
 		fallbackToReAct:    defaultFallbackToReAct,
@@ -37,6 +36,9 @@ func New(client llm.Client, registry *coretool.Registry, opts ...Option) *Agent 
 		if opt != nil {
 			opt(a)
 		}
+	}
+	if a.promptBuilder == nil {
+		a.promptBuilder = NewReActPromptBuilder()
 	}
 	if a.planner == nil {
 		a.planner = NewAutoPlanner(a.base.Client(), a.promptBuilder, a.parser, a.toolCallingEnabled, a.fallbackToReAct)

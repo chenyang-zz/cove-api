@@ -42,6 +42,36 @@ Action Input: {"query":"golang","top_k":3}`)
 	}
 }
 
+// 验证点：ReAct parser 应把纯文本 Action Input 映射为默认 query 字段。
+func TestReActParserParsesPlainTextActionInputAsQuery(t *testing.T) {
+	parser := NewReActParser()
+
+	decision, err := parser.Parse(context.Background(), `Thought: need search
+Action: knowledge_search
+Action Input: golang rag`)
+	if err != nil {
+		t.Fatalf("ReActParser.Parse(plain text input) error = %v, want nil", err)
+	}
+	if decision.Kind != DecisionToolCall || decision.ActionInput["query"] != "golang rag" {
+		t.Fatalf("ReActParser.Parse(plain text input) = %#v, want query golang rag", decision)
+	}
+}
+
+// 验证点：ReAct parser 应支持调用方配置纯文本 Action Input 的目标字段名。
+func TestReActParserParsesPlainTextActionInputWithCustomKey(t *testing.T) {
+	parser := NewReActParser(WithTextActionInputKey("input"))
+
+	decision, err := parser.Parse(context.Background(), `Thought: need search
+Action: web_search
+Action Input: golang rag`)
+	if err != nil {
+		t.Fatalf("ReActParser.Parse(custom plain text input) error = %v, want nil", err)
+	}
+	if decision.ActionInput["input"] != "golang rag" {
+		t.Fatalf("ReActParser.Parse(custom plain text input).ActionInput = %#v, want input golang rag", decision.ActionInput)
+	}
+}
+
 // 验证点：ReAct parser 对缺失 Action Input 应返回空输入，支持最小 ReAct 兜底格式。
 func TestReActParserAllowsMissingActionInput(t *testing.T) {
 	parser := NewReActParser()
@@ -62,6 +92,78 @@ func TestReActParserRejectsInvalidActionInput(t *testing.T) {
 	_, err := parser.Parse(context.Background(), "Thought: bad\nAction: search\nAction Input: [1,2]")
 	if !errors.Is(err, ErrInvalidActionInput) {
 		t.Fatalf("ReActParser.Parse(array input) error = %v, want ErrInvalidActionInput", err)
+	}
+}
+
+// 验证点：默认 ReAct prompt builder 应渲染通过 SystemPrompt 注入的业务信息、中文模板和工具列表。
+func TestReActPromptBuilderRendersDefaultChineseTemplate(t *testing.T) {
+	builder := NewReActPromptBuilder()
+
+	messages, err := builder.Build(context.Background(), State{
+		SystemPrompt: "你是「Cove」的智能助手。\n\n回答要简洁。",
+		Tools: []coretool.Descriptor{
+			{Name: "knowledge_search", Description: "检索知识库。"},
+			{Name: "current_time", Description: "获取当前时间。"},
+		},
+		Input: Input{Query: "你好"},
+	})
+	if err != nil {
+		t.Fatalf("ReActPromptBuilder.Build() error = %v, want nil", err)
+	}
+	if len(messages) < 2 {
+		t.Fatalf("ReActPromptBuilder.Build() messages len = %d, want at least 2", len(messages))
+	}
+	system := messages[0].Content
+	for _, want := range []string{"Cove", "- knowledge_search：检索知识库。", "Action Input: 传给工具的查询关键词（一行纯文本）", "回答要简洁。"} {
+		if !strings.Contains(system, want) {
+			t.Fatalf("ReActPromptBuilder.Build() system prompt = %q, want to contain %q", system, want)
+		}
+	}
+	if strings.Contains(system, "parameters:") {
+		t.Fatalf("ReActPromptBuilder.Build() system prompt = %q, want no schema parameters in text prompt", system)
+	}
+}
+
+// 验证点：默认 ReAct prompt builder 不配置 intro 时仍生成协议文本且不包含业务品牌。
+func TestReActPromptBuilderOmitsBusinessIdentityByDefault(t *testing.T) {
+	builder := NewReActPromptBuilder()
+
+	messages, err := builder.Build(context.Background(), State{
+		Tools: []coretool.Descriptor{{Name: "current_time", Description: "获取当前时间。"}},
+		Input: Input{Query: "你好"},
+	})
+	if err != nil {
+		t.Fatalf("ReActPromptBuilder.Build(default) error = %v, want nil", err)
+	}
+	system := messages[0].Content
+	if !strings.Contains(system, "请按以下格式逐步推理") || !strings.Contains(system, "- current_time：获取当前时间。") {
+		t.Fatalf("ReActPromptBuilder.Build(default) system prompt = %q, want react protocol and tool list", system)
+	}
+	for _, forbidden := range []string{"彗记", "Cove", "你是「"} {
+		if strings.Contains(system, forbidden) {
+			t.Fatalf("ReActPromptBuilder.Build(default) system prompt = %q, want no business identity containing %q", system, forbidden)
+		}
+	}
+}
+
+// 验证点：WithSystemPrompt 应通过默认 builder 注入业务身份到文本 ReAct 模型消息。
+func TestAgentRunInjectsBusinessIdentityThroughSystemPrompt(t *testing.T) {
+	ctx := context.Background()
+	model := &fakeAgentLLM{outputs: []string{"Thought: done\nFinal Answer: ok"}}
+
+	_, err := New(model, coretool.NewRegistry(),
+		WithToolCallingEnabled(false),
+		WithSystemPrompt("你是「Cove」的智能助手。"),
+	).Run(ctx, Input{Query: "你好"})
+	if err != nil {
+		t.Fatalf("Agent.Run(system prompt business identity) error = %v, want nil", err)
+	}
+	if len(model.messages) != 1 || len(model.messages[0]) == 0 {
+		t.Fatalf("model messages = %#v, want one call with system message", model.messages)
+	}
+	system := model.messages[0][0].Content
+	if !strings.Contains(system, "Cove") {
+		t.Fatalf("system prompt = %q, want Cove business identity", system)
 	}
 }
 
@@ -89,7 +191,7 @@ func TestAgentRunExecutesToolAndFeedsObservation(t *testing.T) {
 	model := &fakeAgentLLM{outputs: []string{
 		`Thought: need time
 Action: current_time
-Action Input: {}`,
+Action Input: now`,
 		"Thought: observed\nFinal Answer: It is noon.",
 	}}
 	registry := coretool.NewRegistry()

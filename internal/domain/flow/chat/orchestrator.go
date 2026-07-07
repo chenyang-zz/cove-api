@@ -30,6 +30,8 @@ type Input struct {
 	SystemPrompt         string
 }
 
+const coveAssistantIntro = "你是「Cove」的智能助手。你可以调用以下工具来帮助回答用户的问题。"
+
 type Orchestrator struct {
 	svcCtx *svc.ServiceContext
 	log    *slog.Logger
@@ -93,10 +95,8 @@ func (o *Orchestrator) generate(ctx context.Context, input Input, events chan<- 
 	hooks := &agentHooks{events: events}
 	options := []corereact.Option{
 		corereact.WithHooks(hooks),
+		corereact.WithSystemPrompt(composeSystemPrompt(coveAssistantIntro, input.SystemPrompt)),
 		corereact.WithModelOptions(llm.WithTemperature(input.Temperature)),
-	}
-	if strings.TrimSpace(input.SystemPrompt) != "" {
-		options = append(options, corereact.WithSystemPrompt(strings.TrimSpace(input.SystemPrompt)))
 	}
 	result, err := corereact.New(client, registry, options...).Run(runCtx, corereact.Input{
 		Query:    composeQuery(input.Message, input.Attachments),
@@ -171,6 +171,17 @@ func toolContext(ctx context.Context, svcCtx *svc.ServiceContext, userID uuid.UU
 		return ctx, nil, nil
 	}
 	return util.WithKnowledgeBaseIDs(ctx, kbIDs), kbIDs, nil
+}
+
+func composeSystemPrompt(parts ...string) string {
+	out := []string{}
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return strings.Join(out, "\n\n")
 }
 
 func composeQuery(message string, attachments []*types.MessageAttachment) string {

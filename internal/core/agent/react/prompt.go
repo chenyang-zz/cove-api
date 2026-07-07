@@ -6,20 +6,11 @@ import (
 	"fmt"
 	"strings"
 
+	reactprompt "github.com/boxify/api-go/internal/core/agent/react/prompt"
 	"github.com/boxify/api-go/internal/core/llm"
+	coreprompt "github.com/boxify/api-go/internal/core/prompt"
 	coretool "github.com/boxify/api-go/internal/core/tool"
 )
-
-const defaultSystemPrompt = `You are a ReAct agent. Use tools when needed.
-
-When you need a tool, respond exactly with:
-Thought: your reasoning
-Action: tool_name
-Action Input: {"key":"value"}
-
-When you can answer, respond exactly with:
-Thought: your reasoning
-Final Answer: your final answer`
 
 // PromptBuilder 构造每轮模型输入消息。
 type PromptBuilder interface {
@@ -36,11 +27,10 @@ func NewReActPromptBuilder() *ReActPromptBuilder {
 
 // Build 根据当前状态构造模型消息。
 func (b *ReActPromptBuilder) Build(ctx context.Context, state State) ([]*llm.Message, error) {
-	system := strings.TrimSpace(state.SystemPrompt)
-	if system == "" {
-		system = defaultSystemPrompt
+	system, err := b.renderSystemPrompt(state)
+	if err != nil {
+		return nil, err
 	}
-	system = system + "\n\nAvailable tools:\n" + formatTools(state.Tools)
 
 	messages := []*llm.Message{llm.SystemMessage(system)}
 	messages = append(messages, llm.CloneMessages(state.Input.Messages)...)
@@ -54,16 +44,27 @@ func (b *ReActPromptBuilder) Build(ctx context.Context, state State) ([]*llm.Mes
 	return messages, nil
 }
 
-func formatTools(tools []coretool.Descriptor) string {
-	if len(tools) == 0 {
-		return "(none)"
+func (b *ReActPromptBuilder) renderSystemPrompt(state State) (string, error) {
+	data := reactprompt.SystemData{
+		Tools:        toolDataFromDescriptors(state.Tools),
+		SystemPrompt: strings.TrimSpace(state.SystemPrompt),
 	}
-	lines := make([]string, 0, len(tools))
+	text, err := coreprompt.TemplateText(reactprompt.Templates, reactprompt.SystemTemplate)
+	if err != nil {
+		return "", err
+	}
+	return coreprompt.RenderText(text, data)
+}
+
+func toolDataFromDescriptors(tools []coretool.Descriptor) []reactprompt.ToolData {
+	out := make([]reactprompt.ToolData, 0, len(tools))
 	for _, item := range tools {
-		schema, _ := json.Marshal(item.Schema.Parameters)
-		lines = append(lines, fmt.Sprintf("- %s: %s\n  parameters: %s", item.Name, item.Description, string(schema)))
+		out = append(out, reactprompt.ToolData{
+			Name:        strings.TrimSpace(item.Name),
+			Description: strings.TrimSpace(item.Description),
+		})
 	}
-	return strings.Join(lines, "\n")
+	return out
 }
 
 func formatScratchpad(steps []Step) string {

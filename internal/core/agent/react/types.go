@@ -15,7 +15,7 @@ var ErrMaxIterations = coreagent.ErrMaxIterations
 // ErrParseDecision 表示模型输出不符合 ReAct 决策格式。
 var ErrParseDecision = errors.New("parse react decision")
 
-// ErrInvalidActionInput 表示 Action Input 不是合法 JSON object。
+// ErrInvalidActionInput 表示 Action Input 不是合法 JSON object 或纯文本输入。
 var ErrInvalidActionInput = errors.New("invalid action input")
 
 // ErrToolCallingUnsupported 表示模型客户端当前不支持原生工具调用。

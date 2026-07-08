@@ -1,0 +1,19 @@
+README.md
+  s_04763698f021ee::t_20e98451ae9320 27,37,43,110-111,122-124,136-140,186-187,193-206,208,211,214,216-219,221,224-225,228-256,259-260,303-314,334-341,343,345-346,349-352,363,367
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "124c89662c3c10046bef6b0f4b97c288bb3b9aea",
+  "prompts": {},
+  "sessions": {
+    "s_04763698f021ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_04763698f021ee",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

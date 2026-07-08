@@ -24,6 +24,7 @@
   <a href="#rag-%E7%AE%A1%E7%BA%BF">RAG 管线</a> ·
   <a href="#%E9%85%8D%E7%BD%AE">配置</a> ·
   <a href="#%E5%BC%80%E5%8F%91">开发</a> ·
+  <a href="#%E6%B5%8B%E8%AF%95">测试</a> ·
   <a href="https://github.com/chenyang-zz/cove-api/blob/main/docs/architecture.md">文档</a>
 </p>
 
@@ -33,12 +34,13 @@
 
 - **对话** — 基于 SSE 的流式聊天，多轮上下文管理
 - **RAG 引擎** — 完整的检索增强生成：抓取、解析、分块、嵌入、检索、排序
-- **Agent 编排** — 支持人设与记忆的工具调用 Agent
+- **Agent 编排** — ReAct 双路径（function calling / 文本 ReAct），prompt 模板化渲染，工具调用跨供应商归一化
 - **记忆** — 长期记忆的提取、合并与召回
 - **MCP 集成** — 通过 Model Context Protocol 连接外部工具
 - **实时推送** — 基于 Redis 的事件流
 - **文档处理** — 多格式解析：TXT、Markdown、HTML、DOCX、PDF
 - **内容分类** — LLM 驱动的自动标签，支持优雅降级
+- **API 文档** — 基于代码注解自动生成 OpenAPI 3.0 规范，内置 Swagger UI
 
 ## 技术栈
 
@@ -93,7 +95,6 @@ make migration
 ```bash
 make api       # API 服务 :8000
 make worker    # 后台 worker（另开终端）
-make scheduler # Cron 任务（可选）
 ```
 
 ## 架构
@@ -106,6 +107,8 @@ logic/             →  跨 repository 与 domain 的业务编排
 repository/        →  数据访问（GORM / Neo4j / Elasticsearch）
     ↓
 domain/            →  领域类型、事件、接口
+    ↓
+infrastructure/    →  外部适配器（PostgreSQL / Elasticsearch / Neo4j / Redis / COS / LLM）
 ```
 
 横切关注点（LLM、记忆、RAG、MCP、安全）位于 `internal/core/`，通过单一的 `ServiceContext` 注入 — 参见 `internal/svc/context.go`。
@@ -116,7 +119,9 @@ domain/            →  领域类型、事件、接口
 internal/core/
 ├── tool/           # 业务无关的工具描述、注册和调用能力
 ├── agent/          # Agent 编排与工具调度
-├── llm/            # LLM Provider 抽象
+│   ├── react/          # ReAct 编排（function calling / 文本推理 双路径）
+│   └── prompt/         # Agent 提示词模板与变量结构
+├── llm/            # LLM Provider 抽象（Client / ToolCallingClient / Message）
 ├── rag/            # 检索增强生成引擎
 │   ├── chunker/        # tiktoken 感知的 parent/child 分块
 │   ├── classifier/     # LLM 内容分类
@@ -128,8 +133,11 @@ internal/core/
 │   └── webcrawl/       # 网页抓取，含 SSRF 防护
 ├── memory/         # 长期记忆提取与合并
 ├── mcp/            # Model Context Protocol 集成
-├── prompt/         # 模板渲染（文件系统、记忆、向后兼容 fallback）
-└── security/       # JWT、加解密、密钥管理
+├── prompt/         # 模板渲染（文件系统、内存、向后兼容 fallback）
+├── security/       # JWT、加解密、密钥管理
+├── id/             # ID 生成器
+├── jsonx/          # JSON 解析增强
+└── valuex/         # 值类型工具
 ```
 
 ## RAG 管线
@@ -175,34 +183,80 @@ Source
 
 所有提示词模板位于 `internal/core/rag/prompt/`，由 `internal/core/prompt/` 统一渲染。
 
+> 详细流水线步骤与数据流图见 [`docs/architecture.md`](docs/architecture.md)。
+
 ## 配置
 
 `configs/config.yml` 关键配置节：
 
 ```yaml
+app:
+  env: development
+
+http:
+  host: 0.0.0.0
+  port: 8000
+
+docs:
+  enabled: true
+  path: /docs
+  spec_path: /docs/openapi.json
+  title: Cove API
+  version: 0.1.0
+
 database:
-  postgres: "postgres://user:pass@localhost:5432/cove"
+  url: postgres://cove:cove@localhost:5432/cove?sslmode=disable
 
 redis:
-  addr: "localhost:6379"
+  addr: localhost:6379
 
 elasticsearch:
-  addresses: ["http://localhost:9200"]
+  url: http://localhost:9200
 
-rag:
-  chunk_index: "cove_chunks"
-  embedding_dim: 1024
+neo4j:
+  uri: bolt://localhost:7687
+  username: "neo4j"
+  password: "change-me"
 
-llm:
-  provider: "anthropic"   # 或 "openai"
-  api_key: "${LLM_API_KEY}"
+secret_key: "0123456789abcdef0123456789abcdef"
 
 jwt:
-  secret: "${JWT_SECRET}"
+  secret: change-me
+  access_token_ttl: 168h
 
 storage:
-  driver: "cos"           # 或 "local"
+  backend: local          # 或 cos
+  dir: ./storage
+  cos:
+    bucket_url: ""
+    secret_id: ""
+    secret_key: ""
+    base_url: ""
+
+llm:
+  provider: openai        # 或 anthropic
+  model: gpt-4o-mini
+  embedding_model: text-embedding-3-small
+  base_url: https://api.openai.com/v1
+  api_key: ""
+
+rag:
+  embedding_dim: 1024
+  embedding_batch_size: 10
+
+memory:
+  name_sim_gate: 0.8
+  llm_merge_confidence: 0.8
+  community_clustering_max_iterations: 10
+  community_vote_sem_weight: 0.6
+  community_vote_rel_weight: 0.4
+  community_merge_threshold: 0.85
+
+agent:
+  max_personas: 200
 ```
+
+完整配置项与默认值见 [`configs/config.yml.example`](configs/config.yml.example)。
 
 ## 开发
 
@@ -246,6 +300,18 @@ Cove 内置代码生成器（`cmd/codegen/`），扫描 Go 注解自动生成：
 | `memory:consolidate` | 每日记忆合并 |
 | `research:run` | 研究任务执行 |
 
+## 测试
+
+项目使用 Go 标准测试框架，核心包测试基于本地 fake 实现，无需外部依赖即可运行：
+
+```bash
+go test ./...              # 全量测试
+go test ./internal/core/... # 核心业务能力
+go test ./internal/agent/... # Agent 编排
+```
+
+每个测试函数上方均附有中文注释说明验证点。
+
 ## 项目结构
 
 ```
@@ -265,11 +331,25 @@ Cove 内置代码生成器（`cmd/codegen/`），扫描 Go 注解自动生成：
 │   ├── core/           # 核心业务能力
 │   ├── domain/         # 领域类型 & 事件
 │   ├── infrastructure/ # 外部适配器
+│   │   ├── db/             # PostgreSQL 连接
+│   │   ├── id/             # 分布式 ID
+│   │   ├── jsonrepair/     # JSON 修复
+│   │   ├── llm/            # LLM Provider 实现
+│   │   ├── queue/          # Redis 队列
+│   │   ├── realtime/       # 实时推送
+│   │   ├── security/       # 安全适配器
+│   │   └── storage/        # 对象存储
 │   ├── logic/          # 业务逻辑层
+│   ├── mapper/         # 对象映射（生成）
 │   ├── models/         # GORM 模型
+│   ├── observability/  # 日志 & 追踪
+│   ├── prompts/        # 提示词定义
 │   ├── repository/     # 数据访问
 │   ├── svc/            # ServiceContext (DI)
-│   └── transport/http/ # HTTP 传输层
+│   ├── transport/http/ # HTTP 传输层
+│   ├── util/           # 工具函数
+│   ├── worker/         # 任务处理器
+│   └── xerr/           # 错误定义
 ├── Makefile
 └── README.md
 ```
@@ -280,11 +360,11 @@ Cove 内置代码生成器（`cmd/codegen/`），扫描 Go 注解自动生成：
 
 - 代码通过 `go vet` 和 `gofmt` 检查
 - 新增功能附带单元测试
-- 所有测试通过 `make test` |
+- 所有测试通过 `go test ./...` |
 
 ## 许可证
 
-[MIT](LICENSE) © Cove Team
+MIT © Cove Team
 
 ---
 

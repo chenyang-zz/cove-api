@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	reactprompt "github.com/boxify/api-go/internal/core/agent/react/prompt"
+	agentprompt "github.com/boxify/api-go/internal/core/agent/prompt"
 	"github.com/boxify/api-go/internal/core/llm"
 	coreprompt "github.com/boxify/api-go/internal/core/prompt"
 	coretool "github.com/boxify/api-go/internal/core/tool"
@@ -46,21 +46,21 @@ func (b *ReActPromptBuilder) Build(ctx context.Context, state State) ([]*llm.Mes
 
 // renderSystemPrompt 渲染系统消息。
 func (b *ReActPromptBuilder) renderSystemPrompt(state State) (string, error) {
-	data := reactprompt.SystemData{
+	data := agentprompt.ReActSystemData{
 		Tools:        toolDataFromDescriptors(state.Tools),
 		SystemPrompt: strings.TrimSpace(state.SystemPrompt),
 	}
-	text, err := coreprompt.TemplateText(reactprompt.Templates, reactprompt.SystemTemplate)
+	text, err := coreprompt.TemplateText(agentprompt.Templates, agentprompt.ReActSystemTemplate)
 	if err != nil {
 		return "", err
 	}
 	return coreprompt.RenderText(text, data)
 }
 
-func toolDataFromDescriptors(tools []coretool.Descriptor) []reactprompt.ToolData {
-	out := make([]reactprompt.ToolData, 0, len(tools))
+func toolDataFromDescriptors(tools []coretool.Descriptor) []agentprompt.ReActToolData {
+	out := make([]agentprompt.ReActToolData, 0, len(tools))
 	for _, item := range tools {
-		out = append(out, reactprompt.ToolData{
+		out = append(out, agentprompt.ReActToolData{
 			Name:        strings.TrimSpace(item.Name),
 			Description: strings.TrimSpace(item.Description),
 		})

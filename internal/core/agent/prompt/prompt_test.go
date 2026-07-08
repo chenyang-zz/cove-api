@@ -1,6 +1,6 @@
-// Package prompt 验证 ReAct prompt 的定义边界。
+// Package prompt 验证 Agent prompt 的定义边界。
 //
-// 本文件确保 ReAct prompt 只暴露模板文件、模板名和数据结构；模板读取和渲染必须通过
+// 本文件确保 Agent prompt 只暴露模板文件、模板名和数据结构；模板读取和渲染必须通过
 // core/prompt 完成。
 package prompt
 
@@ -12,9 +12,9 @@ import (
 )
 
 // 验证点：ReAct 系统模板应可由 core/prompt 渲染业务通过 SystemPrompt 注入的信息、工具名称和描述。
-func TestSystemTemplateCanBeRenderedByCorePrompt(t *testing.T) {
-	out, err := coreprompt.Render(Templates, SystemTemplate, SystemData{
-		Tools: []ToolData{
+func TestReActSystemTemplateCanBeRenderedByCorePrompt(t *testing.T) {
+	out, err := coreprompt.Render(Templates, ReActSystemTemplate, ReActSystemData{
+		Tools: []ReActToolData{
 			{Name: "knowledge_search", Description: "检索知识库"},
 			{Name: "current_time", Description: "获取当前时间"},
 		},
@@ -37,9 +37,9 @@ func TestSystemTemplateCanBeRenderedByCorePrompt(t *testing.T) {
 }
 
 // 验证点：ReAct 系统模板不传 SystemPrompt 时不应包含业务品牌身份。
-func TestSystemTemplateOmitsBusinessIdentityWhenSystemPromptIsEmpty(t *testing.T) {
-	out, err := coreprompt.Render(Templates, SystemTemplate, SystemData{
-		Tools: []ToolData{{Name: "current_time", Description: "获取当前时间"}},
+func TestReActSystemTemplateOmitsBusinessIdentityWhenSystemPromptIsEmpty(t *testing.T) {
+	out, err := coreprompt.Render(Templates, ReActSystemTemplate, ReActSystemData{
+		Tools: []ReActToolData{{Name: "current_time", Description: "获取当前时间"}},
 	})
 	if err != nil {
 		t.Fatalf("core prompt Render(react system without intro) error = %v, want nil", err)
@@ -52,9 +52,9 @@ func TestSystemTemplateOmitsBusinessIdentityWhenSystemPromptIsEmpty(t *testing.T
 }
 
 // 验证点：ReAct 系统模板在没有附加人设时不应渲染附加段落。
-func TestSystemTemplateOmitsEmptySystemPromptSection(t *testing.T) {
-	out, err := coreprompt.Render(Templates, SystemTemplate, SystemData{
-		Tools: []ToolData{{Name: "current_time", Description: "获取当前时间"}},
+func TestReActSystemTemplateOmitsEmptySystemPromptSection(t *testing.T) {
+	out, err := coreprompt.Render(Templates, ReActSystemTemplate, ReActSystemData{
+		Tools: []ReActToolData{{Name: "current_time", Description: "获取当前时间"}},
 	})
 	if err != nil {
 		t.Fatalf("core prompt Render(react system without system prompt) error = %v, want nil", err)
@@ -64,9 +64,9 @@ func TestSystemTemplateOmitsEmptySystemPromptSection(t *testing.T) {
 	}
 }
 
-// 验证点：ReAct 系统模板原文应可由 core/prompt 读取，react/prompt 不承担解析职责。
-func TestSystemTemplateTextCanBeReadByCorePrompt(t *testing.T) {
-	out, err := coreprompt.TemplateText(Templates, SystemTemplate)
+// 验证点：ReAct 系统模板原文应可由 core/prompt 读取，agent/prompt 不承担解析职责。
+func TestReActSystemTemplateTextCanBeReadByCorePrompt(t *testing.T) {
+	out, err := coreprompt.TemplateText(Templates, ReActSystemTemplate)
 	if err != nil {
 		t.Fatalf("TemplateText(react system) error = %v, want nil", err)
 	}

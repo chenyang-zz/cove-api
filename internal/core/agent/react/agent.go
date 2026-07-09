@@ -22,7 +22,7 @@ type Agent struct {
 // New 创建 Agent。
 //
 // 默认会优先检测 client 是否实现 ToolCallingClient；支持时走模型原生工具调用，否则
-// 退回文本 ReAct。registry 为 nil 时会使用空工具注册表。
+// 使用 core 内置提示词退回文本 ReAct。registry 为 nil 时会使用空工具注册表。
 func New(client llm.Client, registry *coretool.Registry, opts ...Option) *Agent {
 	base := coreagent.NewBase[Decision, Step](client, registry)
 	base.SetCloneFuncs(cloneDecision, cloneStep)

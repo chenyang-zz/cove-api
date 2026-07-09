@@ -1,112 +1,17 @@
 // Package prompt_test 验证 prompt 管理器和通用模板渲染入口。
 //
-// 本文件覆盖旧 Manager 的磁盘模板兼容行为，以及新增包级 Render/RenderText/
-// TemplateText 入口的基础行为。
+// 本文件覆盖包级 Render、RenderText 和 TemplateText 入口的基础行为。
 package prompt_test
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"testing/fstest"
 
 	"github.com/boxify/api-go/internal/core/prompt"
 )
 
-func TestManagerRenderReadsTemplateFromRootPath(t *testing.T) {
-	// 验证旧 Manager 入口仍能从目录读取模板并完成渲染，保护 memory/agent 调用方。
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "memory"), 0o755); err != nil {
-		t.Fatalf("mkdir prompt namespace: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "memory", "example.tmpl"), []byte("hello {{ .Name }}"), 0o644); err != nil {
-		t.Fatalf("write prompt: %v", err)
-	}
-
-	manager := prompt.NewManager(root)
-	got, err := manager.Render("memory/example", map[string]string{"Name": "boxify"})
-	if err != nil {
-		t.Fatalf("Render error = %v", err)
-	}
-	if got != "hello boxify" {
-		t.Fatalf("Render = %q, want hello boxify", got)
-	}
-}
-
-func TestManagerRenderReadsTemplateFromRootPathWithExtension(t *testing.T) {
-	// 验证旧 root fallback 在名称已有 .tmpl 扩展名时不会重复追加扩展名。
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "memory"), 0o755); err != nil {
-		t.Fatalf("mkdir prompt namespace: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "memory", "explicit.tmpl"), []byte("hello {{ .Name }}"), 0o644); err != nil {
-		t.Fatalf("write prompt: %v", err)
-	}
-
-	manager := prompt.NewManager(root)
-	got, err := manager.Render("memory/explicit.tmpl", map[string]string{"Name": "boxify"})
-	if err != nil {
-		t.Fatalf("Render error = %v", err)
-	}
-	if got != "hello boxify" {
-		t.Fatalf("Render = %q, want hello boxify", got)
-	}
-}
-
-func TestManagerLegacyPromptWrappersRenderThroughManager(t *testing.T) {
-	// 验证 MemoryPrompts 和 AgentPrompts 仍通过 Manager 使用旧 root 模板目录。
-	root := t.TempDir()
-	for _, namespace := range []string{"memory", "agent"} {
-		if err := os.MkdirAll(filepath.Join(root, namespace), 0o755); err != nil {
-			t.Fatalf("mkdir prompt namespace %s: %v", namespace, err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(root, "memory", "statement_extract.tmpl"), []byte("content={{ .Content }} context={{ .Context }}"), 0o644); err != nil {
-		t.Fatalf("write memory prompt: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "agent", "optimize_prompt.tmpl"), []byte("raw={{ .RawPrompt }}"), 0o644); err != nil {
-		t.Fatalf("write agent prompt: %v", err)
-	}
-
-	manager := prompt.NewManager(root)
-	memoryOut, err := manager.MemoryPrompts.StatementExtract(&prompt.StatementExtractData{
-		Content: "正文",
-		Context: "上下文",
-	})
-	if err != nil {
-		t.Fatalf("StatementExtract error = %v", err)
-	}
-	if memoryOut != "content=正文 context=上下文" {
-		t.Fatalf("StatementExtract = %q, want rendered memory prompt", memoryOut)
-	}
-
-	agentOut, err := manager.AgentPrompts.OptimizePrompt(&prompt.OptimizePromptData{RawPrompt: "原提示词"})
-	if err != nil {
-		t.Fatalf("OptimizePrompt error = %v", err)
-	}
-	if agentOut != "raw=原提示词" {
-		t.Fatalf("OptimizePrompt = %q, want rendered agent prompt", agentOut)
-	}
-}
-
-func TestManagerRenderMissingTemplateIncludesPath(t *testing.T) {
-	// 验证模板缺失时错误包含完整路径，方便调用方定位配置问题。
-	root := t.TempDir()
-	manager := prompt.NewManager(root)
-
-	_, err := manager.Render("memory/missing", nil)
-	if err == nil {
-		t.Fatal("Render error = nil, want missing template error")
-	}
-	want := filepath.Join(root, "memory", "missing.tmpl")
-	if !strings.Contains(err.Error(), want) {
-		t.Fatalf("Render error = %q, want path %q", err.Error(), want)
-	}
-}
-
+// TestRenderTextExecutesGoTemplateWithSprigFuncs 验证通用文本渲染入口支持 Go template 和 sprig 函数。
 func TestRenderTextExecutesGoTemplateWithSprigFuncs(t *testing.T) {
-	// 验证通用文本渲染入口支持 Go template 和 sprig 函数。
 	got, err := prompt.RenderText("hello {{ .Name | upper }}", map[string]string{"Name": "boxify"})
 	if err != nil {
 		t.Fatalf("RenderText error = %v", err)
@@ -116,8 +21,8 @@ func TestRenderTextExecutesGoTemplateWithSprigFuncs(t *testing.T) {
 	}
 }
 
+// TestRenderReadsTemplateFromFS 验证通用 FS 渲染入口可脱离 Manager 使用。
 func TestRenderReadsTemplateFromFS(t *testing.T) {
-	// 验证通用 FS 渲染入口可脱离 Manager 使用，供 RAG 等 core 包复用。
 	fsys := fstest.MapFS{
 		"rag/example.tmpl": {Data: []byte("tag={{ .Tag }}")},
 	}
@@ -130,8 +35,8 @@ func TestRenderReadsTemplateFromFS(t *testing.T) {
 	}
 }
 
+// TestTemplateTextReadsTemplateFromFS 验证通用模板读取入口只读取原始文本。
 func TestTemplateTextReadsTemplateFromFS(t *testing.T) {
-	// 验证通用模板读取入口只读取原始文本，不执行模板占位符。
 	fsys := fstest.MapFS{
 		"raw.tmpl": {Data: []byte("{{ .Name }}")},
 	}

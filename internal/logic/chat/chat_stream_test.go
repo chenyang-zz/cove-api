@@ -10,10 +10,13 @@ import (
 	"time"
 
 	corellm "github.com/boxify/api-go/internal/core/llm"
+	coreprompt "github.com/boxify/api-go/internal/core/prompt"
 	"github.com/boxify/api-go/internal/domain/types"
 	"github.com/boxify/api-go/internal/infrastructure/realtime"
 	"github.com/boxify/api-go/internal/infrastructure/security"
 	"github.com/boxify/api-go/internal/models"
+	appprompts "github.com/boxify/api-go/internal/prompts"
+	"github.com/boxify/api-go/internal/prompts/promptsgen"
 	"github.com/boxify/api-go/internal/repository"
 	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/request"
@@ -197,6 +200,10 @@ func newChatStreamTestServiceContext(t *testing.T, userID uuid.UUID, llmClient *
 	}
 	llmManager := corellm.NewManager()
 	llmManager.Register("fake", fakeChatLLMFactory{client: llmClient})
+	promptManager := coreprompt.NewManager()
+	if err := appprompts.Register(promptManager); err != nil {
+		t.Fatalf("Register prompts error = %v, want nil", err)
+	}
 	return &svc.ServiceContext{
 		SecretCipher:      cipher,
 		LLMManager:        llmManager,
@@ -206,6 +213,8 @@ func newChatStreamTestServiceContext(t *testing.T, userID uuid.UUID, llmClient *
 		MessageRepo:       &fakeChatMessageRepo{},
 		KnowledgeBaseRepo: &fakeChatKnowledgeBaseRepo{},
 		Realtime:          newFakeChatRealtimeBroker(),
+		PromptManager:     promptManager,
+		PromptClient:      promptsgen.NewClient(promptManager),
 	}
 }
 

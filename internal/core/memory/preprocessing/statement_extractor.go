@@ -12,7 +12,6 @@ import (
 	"github.com/boxify/api-go/internal/core/jsonx"
 	"github.com/boxify/api-go/internal/core/llm"
 	"github.com/boxify/api-go/internal/core/memory"
-	"github.com/boxify/api-go/internal/core/prompt"
 	"github.com/boxify/api-go/internal/xerr"
 )
 
@@ -24,11 +23,11 @@ import (
 
 type StatementExtractor struct {
 	llm        llm.Client
-	prompt     *prompt.Manager
+	prompt     memory.Prompter
 	jsonParser jsonx.Parser
 }
 
-func NewStatementExtractor(llm llm.Client, prompt *prompt.Manager, jsonParser jsonx.Parser) *StatementExtractor {
+func NewStatementExtractor(llm llm.Client, prompt memory.Prompter, jsonParser jsonx.Parser) *StatementExtractor {
 	return &StatementExtractor{
 		llm:        llm,
 		prompt:     prompt,
@@ -38,7 +37,7 @@ func NewStatementExtractor(llm llm.Client, prompt *prompt.Manager, jsonParser js
 
 // Extract 从一段文本抽取原子陈述句
 func (e *StatementExtractor) Extract(ctx context.Context, content string, context string) ([]*memory.ExtractedStatement, error) {
-	promptText, err := e.prompt.MemoryPrompts.StatementExtract(&prompt.StatementExtractData{
+	promptText, err := e.prompt.StatementExtract(&memory.StatementPromptInput{
 		Content: content,
 		Context: context,
 	})

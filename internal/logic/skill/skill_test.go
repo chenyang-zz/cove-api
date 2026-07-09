@@ -12,6 +12,7 @@ import (
 	"github.com/boxify/api-go/internal/infrastructure/security"
 	"github.com/boxify/api-go/internal/models"
 	appprompts "github.com/boxify/api-go/internal/prompts"
+	"github.com/boxify/api-go/internal/prompts/promptsgen"
 	"github.com/boxify/api-go/internal/repository"
 	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/request"
@@ -194,7 +195,7 @@ func TestOptimizeSkillPromptUsesDefaultChatModel(t *testing.T) {
 		{ID: uuid.New(), UserID: userID, Type: string(types.ChatModelType), Provider: "fake", ModelName: "chat-a", APIKeyEncrypted: encrypted},
 		{ID: uuid.New(), UserID: userID, Type: string(types.ChatModelType), Provider: "fake", ModelName: "chat-b", APIKeyEncrypted: encrypted, IsDefault: true},
 	}}
-	promptManager := prompt.NewManager("")
+	promptManager := prompt.NewManager()
 	if err := appprompts.Register(promptManager); err != nil {
 		t.Fatalf("Register prompts error = %v, want nil", err)
 	}
@@ -204,6 +205,7 @@ func TestOptimizeSkillPromptUsesDefaultChatModel(t *testing.T) {
 		SecretCipher:    cipher,
 		LLMManager:      manager,
 		PromptManager:   promptManager,
+		PromptClient:    promptsgen.NewClient(promptManager),
 	}).OptimizeSkillPrompt(userID, &request.OptimizeSkillPromptRequest{Prompt: "原始提示词"})
 	if err != nil {
 		t.Fatalf("OptimizeSkillPrompt error = %v", err)

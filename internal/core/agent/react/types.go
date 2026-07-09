@@ -110,6 +110,13 @@ type Hooks = coreagent.Hooks[Decision, Step]
 // NoopHooks 是不执行任何副作用的默认 hooks。
 type NoopHooks = coreagent.NoopHooks[Decision, Step]
 
+// PromptBuilder 构造文本 ReAct 路径每轮发送给模型的消息。
+//
+// 实现通常由应用层注入，以便模板注册、品牌身份和业务提示词不进入 core 包。
+type PromptBuilder interface {
+	Build(ctx context.Context, state State) ([]*llm.Message, error)
+}
+
 // Planner 负责把当前状态转成下一步标准化决策。
 type Planner interface {
 	Plan(ctx context.Context, state State, opts ...llm.ModelCallOption) (Decision, error)

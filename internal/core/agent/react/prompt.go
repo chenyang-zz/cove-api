@@ -9,24 +9,19 @@ import (
 	agentprompt "github.com/boxify/api-go/internal/core/agent/prompt"
 	"github.com/boxify/api-go/internal/core/llm"
 	coreprompt "github.com/boxify/api-go/internal/core/prompt"
-	coretool "github.com/boxify/api-go/internal/core/tool"
 )
 
-// PromptBuilder 构造每轮模型输入消息。
-type PromptBuilder interface {
-	Build(ctx context.Context, state State) ([]*llm.Message, error)
-}
-
-// ReActPromptBuilder 是默认 ReAct prompt builder。
+// ReActPromptBuilder 使用 core 内置模板构造文本 ReAct 模型消息。
 type ReActPromptBuilder struct{}
 
-// NewReActPromptBuilder 创建默认 ReAct prompt builder。
+// NewReActPromptBuilder 创建默认 ReAct 提示词构造器。
 func NewReActPromptBuilder() *ReActPromptBuilder {
 	return &ReActPromptBuilder{}
 }
 
-// Build 根据当前状态构造模型消息。
+// Build 根据当前状态构造系统消息、历史消息、用户问题和 ReAct scratchpad。
 func (b *ReActPromptBuilder) Build(ctx context.Context, state State) ([]*llm.Message, error) {
+	_ = ctx
 	system, err := b.renderSystemPrompt(state)
 	if err != nil {
 		return nil, err
@@ -34,9 +29,8 @@ func (b *ReActPromptBuilder) Build(ctx context.Context, state State) ([]*llm.Mes
 
 	messages := []*llm.Message{llm.SystemMessage(system)}
 	messages = append(messages, llm.CloneMessages(state.Input.Messages)...)
-	userContent := strings.TrimSpace(state.Input.Query)
-	if userContent != "" {
-		messages = append(messages, llm.UserMessage(userContent))
+	if query := strings.TrimSpace(state.Input.Query); query != "" {
+		messages = append(messages, llm.UserMessage(query))
 	}
 	if len(state.Steps) > 0 {
 		messages = append(messages, llm.AssistantMessage(formatScratchpad(state.Steps)))
@@ -44,31 +38,24 @@ func (b *ReActPromptBuilder) Build(ctx context.Context, state State) ([]*llm.Mes
 	return messages, nil
 }
 
-// renderSystemPrompt 渲染系统消息。
 func (b *ReActPromptBuilder) renderSystemPrompt(state State) (string, error) {
-	data := agentprompt.ReActSystemData{
-		Tools:        toolDataFromDescriptors(state.Tools),
-		SystemPrompt: strings.TrimSpace(state.SystemPrompt),
+	tools := make([]agentprompt.ReActToolData, 0, len(state.Tools))
+	for _, item := range state.Tools {
+		tools = append(tools, agentprompt.ReActToolData{
+			Name:        strings.TrimSpace(item.Name),
+			Description: strings.TrimSpace(item.Description),
+		})
 	}
 	text, err := coreprompt.TemplateText(agentprompt.Templates, agentprompt.ReActSystemTemplate)
 	if err != nil {
 		return "", err
 	}
-	return coreprompt.RenderText(text, data)
+	return coreprompt.RenderText(text, agentprompt.ReActSystemData{
+		Tools:        tools,
+		SystemPrompt: strings.TrimSpace(state.SystemPrompt),
+	})
 }
 
-func toolDataFromDescriptors(tools []coretool.Descriptor) []agentprompt.ReActToolData {
-	out := make([]agentprompt.ReActToolData, 0, len(tools))
-	for _, item := range tools {
-		out = append(out, agentprompt.ReActToolData{
-			Name:        strings.TrimSpace(item.Name),
-			Description: strings.TrimSpace(item.Description),
-		})
-	}
-	return out
-}
-
-// formatScratchpad 格式化 scratchpad。
 func formatScratchpad(steps []Step) string {
 	parts := make([]string, 0, len(steps))
 	for _, step := range steps {
@@ -87,3 +74,5 @@ func formatScratchpad(steps []Step) string {
 	}
 	return strings.Join(parts, "\n\n")
 }
+
+var _ PromptBuilder = (*ReActPromptBuilder)(nil)

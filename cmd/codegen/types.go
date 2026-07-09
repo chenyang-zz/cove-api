@@ -30,6 +30,8 @@ const (
 	FileModified    FileChangeKind = "modified"
 	FileWouldAdd    FileChangeKind = "would-add"
 	FileWouldModify FileChangeKind = "would-modify"
+	FileDeleted     FileChangeKind = "deleted"
+	FileWouldDelete FileChangeKind = "would-delete"
 	FileSkipped     FileChangeKind = "skipped"
 	FileUnchanged   FileChangeKind = "unchanged"
 )
@@ -101,7 +103,7 @@ func (r Report) HasDiagnostic(code string) bool {
 func (r Report) Changed() bool {
 	for _, file := range r.Files {
 		switch file.Kind {
-		case FileAdded, FileModified, FileWouldAdd, FileWouldModify:
+		case FileAdded, FileModified, FileWouldAdd, FileWouldModify, FileDeleted, FileWouldDelete:
 			return true
 		}
 	}
@@ -132,6 +134,14 @@ type DocsOptions struct {
 	Output  string
 	Title   string
 	Version string
+	DryRun  bool
+	Check   bool
+	Verbose bool
+}
+
+type PromptOptions struct {
+	Root    string
+	Output  string
 	DryRun  bool
 	Check   bool
 	Verbose bool

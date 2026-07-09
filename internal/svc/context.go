@@ -28,6 +28,7 @@ import (
 	"github.com/boxify/api-go/internal/infrastructure/storage"
 	"github.com/boxify/api-go/internal/models"
 	appprompts "github.com/boxify/api-go/internal/prompts"
+	"github.com/boxify/api-go/internal/prompts/promptsgen"
 	"github.com/boxify/api-go/internal/repository"
 	repositoryes "github.com/boxify/api-go/internal/repository/es"
 	"github.com/boxify/api-go/internal/repository/graph"
@@ -75,6 +76,7 @@ type ServiceContext struct {
 	TokenIssuer  *security.TokenIssuer
 
 	PromptManager  *prompt.Manager
+	PromptClient   *promptsgen.Client
 	LLMManager     *corellm.Manager
 	MCPToolService *coremcp.Service
 
@@ -92,7 +94,7 @@ func New(ctx context.Context, cfg config.Config) (*ServiceContext, error) {
 		return nil, xerr.BadRequest("JWT access token TTL 配置无效")
 	}
 
-	promptManager := prompt.NewManager("")
+	promptManager := prompt.NewManager()
 	if err := appprompts.Register(promptManager); err != nil {
 		return nil, xerr.Wrapf(err, "注册提示词失败")
 	}
@@ -109,6 +111,7 @@ func New(ctx context.Context, cfg config.Config) (*ServiceContext, error) {
 		TokenIssuer:  security.NewTokenIssuer(cfg.JWT.Secret, accessTokenTTL),
 
 		PromptManager:  promptManager,
+		PromptClient:   promptsgen.NewClient(promptManager),
 		LLMManager:     BuildLLMManager(),
 		MCPToolService: coremcp.NewService(coremcp.Options{}),
 	}
@@ -245,6 +248,7 @@ func newTxContext(s *ServiceContext) ServiceContext {
 		SecretCipher:        s.SecretCipher,
 		TokenIssuer:         s.TokenIssuer,
 		PromptManager:       s.PromptManager,
+		PromptClient:        s.PromptClient,
 		LLMManager:          s.LLMManager,
 		MCPToolService:      s.MCPToolService,
 		closeErr:            s.closeErr,

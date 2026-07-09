@@ -1,14 +1,12 @@
 // Package prompt 负责模板文件读取。
 //
-// 本文件把读取逻辑限制在“拿到模板文本”这一层，不解析模板语法。文件系统读取
-// 和旧 root 目录读取都在这里实现，解析和执行统一交给 template.go。
+// 本文件把读取逻辑限制在“拿到模板文本”这一层，不解析模板语法。所有模板来源
+// 都通过 fs.FS 读取，解析和执行统一交给 template.go。
 package prompt
 
 import (
 	"fmt"
 	"io/fs"
-	"os"
-	"path/filepath"
 )
 
 // TemplateText 从 Renderer 绑定的文件系统读取原始模板文本，不解析模板语法。
@@ -30,15 +28,4 @@ func readTemplate(fsys TemplateFS, name string) (string, error) {
 		return "", fmt.Errorf("read prompt %s failed: %w", name, err)
 	}
 	return string(data), nil
-}
-
-// readTemplateFile 兼容旧 Manager 的磁盘 root 读取方式。
-func readTemplateFile(root string, name string) (string, error) {
-	templateName := rootTemplateName(name)
-	path := filepath.Join(root, templateName)
-	text, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("read prompt %s failed: %w", path, err)
-	}
-	return string(text), nil
 }

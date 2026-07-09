@@ -15,7 +15,7 @@ func (m *Manager) Render(name string, data any) (string, error) {
 	return m.renderTemplate(name, text, data)
 }
 
-// RenderText 直接渲染传入的模板文本，不依赖 Manager 注册内容或磁盘 root。
+// RenderText 直接渲染传入的模板文本，不依赖 Manager 注册内容。
 //
 // RenderText 会复用 Manager 的模板函数集合，适合外部已经解析好提示词来源、
 // 只需要执行 Go template 的场景。

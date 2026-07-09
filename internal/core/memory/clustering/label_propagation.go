@@ -16,7 +16,6 @@ import (
 	"github.com/boxify/api-go/internal/core/jsonx"
 	"github.com/boxify/api-go/internal/core/llm"
 	"github.com/boxify/api-go/internal/core/memory"
-	"github.com/boxify/api-go/internal/core/prompt"
 	"github.com/boxify/api-go/internal/observability/xlog"
 	"github.com/boxify/api-go/internal/repository"
 	"github.com/boxify/api-go/internal/util"
@@ -39,13 +38,13 @@ type LabelPropagationEngine struct {
 	userId        string
 	id            id.Generator
 	llm           llm.Client
-	prompt        *prompt.Manager
+	prompt        memory.Prompter
 	jsonParser    jsonx.Parser
 	communityRepo repository.MemoryCommunityRepository
 	memoryRepo    repository.MemoryGraphRepository
 }
 
-func NewLabelPropagationEngine(config *config.Config, idGenerator id.Generator, llm llm.Client, prompt *prompt.Manager,
+func NewLabelPropagationEngine(config *config.Config, idGenerator id.Generator, llm llm.Client, prompt memory.Prompter,
 	jsonParser jsonx.Parser, memoryCommunityRepo repository.MemoryCommunityRepository,
 	memoryGraphRepo repository.MemoryGraphRepository) *LabelPropagationEngine {
 	return &LabelPropagationEngine{
@@ -359,15 +358,15 @@ func (e *LabelPropagationEngine) generateMetadata(ctx context.Context, userId st
 		for i, cid := range communityIds {
 			curMembers := util.Head(members[i], 20)
 
-			promptMembers := make([]*prompt.CommunityMember, 0, len(curMembers))
+			promptMembers := make([]*memory.CommunityMemberPromptInput, 0, len(curMembers))
 			for _, mem := range curMembers {
-				promptMembers = append(promptMembers, &prompt.CommunityMember{
+				promptMembers = append(promptMembers, &memory.CommunityMemberPromptInput{
 					Name:        mem.Name,
 					Description: mem.Description,
 				})
 			}
 
-			promptText, err := e.prompt.MemoryPrompts.GenerateCommunityMetadata(&prompt.GenerateCommunityMetadataData{
+			promptText, err := e.prompt.GenerateCommunityMetadata(&memory.CommunityMetadataPromptInput{
 				Members: promptMembers,
 			})
 			if err != nil {

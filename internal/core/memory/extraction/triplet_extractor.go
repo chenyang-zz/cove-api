@@ -13,7 +13,6 @@ import (
 	"github.com/boxify/api-go/internal/core/jsonx"
 	"github.com/boxify/api-go/internal/core/llm"
 	"github.com/boxify/api-go/internal/core/memory"
-	"github.com/boxify/api-go/internal/core/prompt"
 	"github.com/boxify/api-go/internal/util"
 	"github.com/boxify/api-go/internal/xerr"
 	"golang.org/x/sync/errgroup"
@@ -26,11 +25,11 @@ import (
 
 type TripletExtractor struct {
 	llm        llm.Client
-	prompt     *prompt.Manager
+	prompt     memory.Prompter
 	jsonParser jsonx.Parser
 }
 
-func NewTripletExtractor(llm llm.Client, prompt *prompt.Manager, jsonParser jsonx.Parser) *TripletExtractor {
+func NewTripletExtractor(llm llm.Client, prompt memory.Prompter, jsonParser jsonx.Parser) *TripletExtractor {
 	return &TripletExtractor{
 		llm:        llm,
 		prompt:     prompt,
@@ -46,7 +45,7 @@ func (e *TripletExtractor) Extract(ctx context.Context, statement *memory.Extrac
 		return &memory.TripletExtractionResult{}, nil
 	}
 
-	promptText, err := e.prompt.MemoryPrompts.TripletExtract(&prompt.TripletExtractData{
+	promptText, err := e.prompt.TripletExtract(&memory.TripletPromptInput{
 		Statement:   statement.Statement,
 		Context:     context,
 		EntityTypes: []string{},

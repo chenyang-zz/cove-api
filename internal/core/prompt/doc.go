@@ -5,17 +5,18 @@
 //
 // 外部业务提示词注册与渲染示例：
 //
-//	manager := prompt.NewManager("")
+//	manager := prompt.NewManager()
 //	err := appprompts.Register(manager)
-//	out, err := manager.Render("agent/optimize_prompt", prompt.OptimizePromptData{
+//	client := promptsgen.NewClient(manager)
+//	out, err := client.AgentOptimizePrompt(&promptsgen.AgentOptimizePromptParams{
 //		RawPrompt: "你是一个助手",
 //	})
 //
 // RegisterFS + Render 示例：
 //
-//	manager := prompt.NewManager("")
-//	err := manager.RegisterFS("rag", ragprompt.Templates)
-//	out, err := manager.Render("rag/content_classifier.tmpl", data)
+//	manager := prompt.NewManager()
+//	err := manager.RegisterFS("custom", os.DirFS("/data/prompts"))
+//	out, err := manager.Render("custom/classify.tmpl", data)
 //
 // RegisterText + Render 示例：
 //
@@ -24,7 +25,7 @@
 //		Tags    []string
 //	}
 //
-//	manager := prompt.NewManager("")
+//	manager := prompt.NewManager()
 //	err := manager.RegisterText("db/classify", "内容：{{ .Content }}")
 //	out, err := manager.Render("db/classify", ClassifyPromptData{Content: "用户输入"})
 //

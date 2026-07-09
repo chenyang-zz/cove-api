@@ -282,6 +282,10 @@ func fileChangeStyle(kind FileChangeKind) (string, string) {
 		return "+?", ansiGreen
 	case FileWouldModify:
 		return "~?", ansiYellow
+	case FileDeleted:
+		return "-", ansiRed
+	case FileWouldDelete:
+		return "-?", ansiRed
 	case FileSkipped, FileUnchanged:
 		return "=", ansiGray
 	default:

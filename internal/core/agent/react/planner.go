@@ -34,7 +34,7 @@ type ReActTextPlanner struct {
 
 // NewReActTextPlanner 创建文本 ReAct planner。
 //
-// builder 或 parser 为 nil 时会使用默认实现。client 为 nil 时，Plan 会返回错误。
+// builder 或 parser 为 nil 时会使用 core 内置默认实现。client 为 nil 时，Plan 会返回错误。
 func NewReActTextPlanner(client llm.Client, builder PromptBuilder, parser Parser) *ReActTextPlanner {
 	if builder == nil {
 		builder = NewReActPromptBuilder()
@@ -66,6 +66,9 @@ func (p *ReActTextPlanner) planTrace(ctx context.Context, state State, opts ...l
 	if p.client == nil {
 		return plannerResult{}, errors.New("agent model client is nil")
 	}
+	if p.promptBuilder == nil {
+		return plannerResult{}, errors.New("react prompt builder is nil")
+	}
 	messages, err := p.promptBuilder.Build(ctx, cloneState(state))
 	if err != nil {
 		return plannerResult{}, err
@@ -87,6 +90,9 @@ func (p *ReActTextPlanner) planTrace(ctx context.Context, state State, opts ...l
 func (p *ReActTextPlanner) modelMessages(ctx context.Context, state State) ([]*llm.Message, error) {
 	if p == nil {
 		return nil, errors.New("react text planner is nil")
+	}
+	if p.promptBuilder == nil {
+		return nil, errors.New("react prompt builder is nil")
 	}
 	return p.promptBuilder.Build(ctx, cloneState(state))
 }

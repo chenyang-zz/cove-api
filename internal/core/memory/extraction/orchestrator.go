@@ -17,7 +17,6 @@ import (
 	"github.com/boxify/api-go/internal/core/llm"
 	"github.com/boxify/api-go/internal/core/memory"
 	"github.com/boxify/api-go/internal/core/memory/preprocessing"
-	"github.com/boxify/api-go/internal/core/prompt"
 	"github.com/boxify/api-go/internal/observability/xlog"
 	"github.com/boxify/api-go/internal/repository"
 	"github.com/boxify/api-go/internal/xerr"
@@ -29,7 +28,7 @@ type MemoryOrchestrator struct {
 	userId             string
 	id                 id.Generator
 	llm                llm.Client
-	prompt             *prompt.Manager
+	prompt             memory.Prompter
 	jsonParser         jsonx.Parser
 	chunker            *preprocessing.TextChunker
 	statementExtractor *preprocessing.StatementExtractor
@@ -37,7 +36,7 @@ type MemoryOrchestrator struct {
 	memoryRepo         repository.MemoryGraphRepository
 }
 
-func NewMemoryOrchestrator(config *config.Config, userId string, idGenerator id.Generator, llm llm.Client, prompt *prompt.Manager,
+func NewMemoryOrchestrator(config *config.Config, userId string, idGenerator id.Generator, llm llm.Client, prompt memory.Prompter,
 	jsonParser jsonx.Parser, memoryGraphRepository repository.MemoryGraphRepository) *MemoryOrchestrator {
 	return &MemoryOrchestrator{
 		log:                xlog.Component("memory_extract_orchestractor"),

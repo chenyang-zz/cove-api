@@ -1,12 +1,11 @@
 // Package prompt 实现 Manager 的模板注册和查找能力。
 //
-// 本文件负责维护 Manager 的模板来源，不执行模板渲染。模板来源包括内存文本、
-// 命名空间文件系统和旧 root 目录。
+// 本文件负责维护 Manager 的模板来源，不执行模板渲染。模板来源包括内存文本和
+// 命名空间文件系统。
 package prompt
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 )
 
@@ -29,8 +28,7 @@ func (m *Manager) RegisterFS(namespace string, fsys TemplateFS) error {
 
 // RegisterText 注册一段内存模板文本，name 是后续读取和渲染使用的完整名称。
 //
-// name 不能为空。内存模板按完整名称精确匹配，并优先于 RegisterFS 和旧 root
-// 目录中的同名模板。
+// name 不能为空。内存模板按完整名称精确匹配，并优先于 RegisterFS 中的同名模板。
 func (m *Manager) RegisterText(name string, text string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -43,8 +41,8 @@ func (m *Manager) RegisterText(name string, text string) error {
 
 // TemplateText 按名称读取模板原文，不解析模板语法。
 //
-// 读取顺序为内存文本模板、已注册 namespace 文件系统、旧 root 目录。root fallback
-// 会在名称没有扩展名时自动追加 .tmpl，用于兼容旧 memory/agent 模板调用。
+// 读取顺序为内存文本模板、已注册 namespace 文件系统。名称不是
+// namespace/template 格式或 namespace 未注册时返回错误。
 func (m *Manager) TemplateText(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -58,20 +56,14 @@ func (m *Manager) TemplateText(name string) (string, error) {
 	}
 
 	namespace, templateName, err := splitRegisteredName(name)
-	if err == nil {
-		if fsys, ok := m.sources[namespace]; ok {
-			return readTemplate(fsys, templateName)
-		}
+	if err != nil {
+		return "", err
 	}
-
-	// root fallback 是旧 Manager 行为；只有没有 root 时才把 namespace 缺失视为错误。
-	if m.root == "" {
-		if err != nil {
-			return "", err
-		}
+	fsys, ok := m.sources[namespace]
+	if !ok {
 		return "", fmt.Errorf("prompt namespace %q is not registered", namespace)
 	}
-	return readTemplateFile(m.root, name)
+	return readTemplate(fsys, templateName)
 }
 
 // splitRegisteredName 把 Manager 注册名称拆分为 namespace 和模板相对路径。
@@ -81,12 +73,4 @@ func splitRegisteredName(name string) (string, string, error) {
 		return "", "", fmt.Errorf("prompt name %q must be namespace/template", name)
 	}
 	return parts[0], parts[1], nil
-}
-
-// rootTemplateName 返回旧 root 目录下的模板相对路径。
-func rootTemplateName(name string) string {
-	if filepath.Ext(name) == "" {
-		return fmt.Sprintf("%s.tmpl", name)
-	}
-	return name
 }

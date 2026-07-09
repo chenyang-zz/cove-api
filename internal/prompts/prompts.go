@@ -20,6 +20,17 @@ type definition struct {
 	file string
 }
 
+func registeredPrompts() []definition {
+	return []definition{
+		{name: "agent/optimize_prompt", file: "optimize_prompt.tmpl"},
+		{name: "memory/statement_extract", file: "extract_statement.tmpl"},
+		{name: "memory/triplet_extract", file: "extract_triplet.tmpl"},
+		{name: "memory/dedup_entity", file: "dedup_entity.tmpl"},
+		{name: "memory/generate_community_metadata", file: "generate_community_metadata.tmpl"},
+		{name: "skill/optimize_prompt", file: "optimize_skill_prompt.tmpl"},
+	}
+}
+
 // Register 将内置业务提示词注册到 manager。
 //
 // manager 不能为 nil。注册完成后，调用方可继续使用 agent/... 和 memory/... 逻辑名称
@@ -29,14 +40,7 @@ func Register(manager *coreprompt.Manager) error {
 		return fmt.Errorf("prompt manager is nil")
 	}
 
-	definitions := []definition{
-		{name: "agent/optimize_prompt", file: "optimize_prompt.tmpl"},
-		{name: "memory/statement_extract", file: "extract_statement.tmpl"},
-		{name: "memory/triplet_extract", file: "extract_triplet.tmpl"},
-		{name: "memory/dedup_entity", file: "dedup_entity.tmpl"},
-		{name: "memory/generate_community_metadata", file: "generate_community_metadata.tmpl"},
-	}
-	for _, item := range definitions {
+	for _, item := range registeredPrompts() {
 		text, err := fs.ReadFile(templates, item.file)
 		if err != nil {
 			return fmt.Errorf("read prompt %s failed: %w", item.name, err)

@@ -5,9 +5,9 @@ import (
 	"log/slog"
 
 	"github.com/boxify/api-go/internal/core/llm"
-	"github.com/boxify/api-go/internal/core/prompt"
 	"github.com/boxify/api-go/internal/domain/types"
 	"github.com/boxify/api-go/internal/observability/xlog"
+	"github.com/boxify/api-go/internal/prompts/promptsgen"
 	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/request"
 	"github.com/boxify/api-go/internal/transport/http/response"
@@ -67,7 +67,7 @@ func (l *OptimizePromptLogic) OptimizePrompt(userID uuid.UUID, input *request.Op
 		return nil, err
 	}
 
-	promptText, err := l.svcCtx.PromptManager.AgentPrompts.OptimizePrompt(&prompt.OptimizePromptData{
+	promptText, err := l.svcCtx.PromptClient.AgentOptimizePrompt(&promptsgen.AgentOptimizePromptParams{
 		RawPrompt: input.SystemPrompt,
 	})
 	if err != nil {

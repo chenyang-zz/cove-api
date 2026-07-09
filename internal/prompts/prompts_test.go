@@ -10,7 +10,7 @@ import (
 
 // 验证点：Register 应把平铺模板注册为现有 agent 和 memory 逻辑名称。
 func TestRegisterMakesFlatTemplatesAvailableByLogicalName(t *testing.T) {
-	manager := coreprompt.NewManager("")
+	manager := coreprompt.NewManager()
 	if err := Register(manager); err != nil {
 		t.Fatalf("Register() error = %v, want nil", err)
 	}
@@ -41,5 +41,17 @@ func TestRegisterRejectsNilManager(t *testing.T) {
 	err := Register(nil)
 	if err == nil || !strings.Contains(err.Error(), "prompt manager") {
 		t.Fatalf("Register(nil) error = %v, want prompt manager error", err)
+	}
+}
+
+// TestRegisterExcludesCorePrompts 验证外部注册表不会注册由 core/agent 自己 embed 的 ReAct 模板。
+func TestRegisterExcludesCorePrompts(t *testing.T) {
+	manager := coreprompt.NewManager()
+	if err := Register(manager); err != nil {
+		t.Fatalf("Register error = %v, want nil", err)
+	}
+
+	if _, err := manager.TemplateText("agent/react_system"); err == nil {
+		t.Fatal("TemplateText(agent/react_system) error = nil, want unregistered core prompt")
 	}
 }

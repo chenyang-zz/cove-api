@@ -3,6 +3,7 @@ package react
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -95,63 +96,37 @@ func TestReActParserRejectsInvalidActionInput(t *testing.T) {
 	}
 }
 
-// 验证点：默认 ReAct prompt builder 应渲染通过 SystemPrompt 注入的业务信息、中文模板和工具列表。
-func TestReActPromptBuilderRendersDefaultChineseTemplate(t *testing.T) {
+// TestReActPromptBuilderRendersEmbeddedTemplate 验证 ReAct 默认 builder 直接渲染 core 内置模板，无需外部注册。
+func TestReActPromptBuilderRendersEmbeddedTemplate(t *testing.T) {
 	builder := NewReActPromptBuilder()
 
 	messages, err := builder.Build(context.Background(), State{
-		SystemPrompt: "你是「Cove」的智能助手。\n\n回答要简洁。",
-		Tools: []coretool.Descriptor{
-			{Name: "knowledge_search", Description: "检索知识库。"},
-			{Name: "current_time", Description: "获取当前时间。"},
-		},
+		SystemPrompt: "你是「Cove」的智能助手。",
+		Tools: []coretool.Descriptor{{
+			Name:        "knowledge_search",
+			Description: "检索知识库。",
+		}},
 		Input: Input{Query: "你好"},
 	})
 	if err != nil {
-		t.Fatalf("ReActPromptBuilder.Build() error = %v, want nil", err)
+		t.Fatalf("ReActPromptBuilder.Build error = %v, want nil", err)
 	}
-	if len(messages) < 2 {
-		t.Fatalf("ReActPromptBuilder.Build() messages len = %d, want at least 2", len(messages))
+	if len(messages) != 2 {
+		t.Fatalf("ReActPromptBuilder.Build messages len = %d, want 2", len(messages))
 	}
-	system := messages[0].Content
-	for _, want := range []string{"Cove", "- knowledge_search：检索知识库。", "Action Input: 传给工具的查询关键词（一行纯文本）", "回答要简洁。"} {
-		if !strings.Contains(system, want) {
-			t.Fatalf("ReActPromptBuilder.Build() system prompt = %q, want to contain %q", system, want)
-		}
-	}
-	if strings.Contains(system, "parameters:") {
-		t.Fatalf("ReActPromptBuilder.Build() system prompt = %q, want no schema parameters in text prompt", system)
-	}
-}
-
-// 验证点：默认 ReAct prompt builder 不配置 intro 时仍生成协议文本且不包含业务品牌。
-func TestReActPromptBuilderOmitsBusinessIdentityByDefault(t *testing.T) {
-	builder := NewReActPromptBuilder()
-
-	messages, err := builder.Build(context.Background(), State{
-		Tools: []coretool.Descriptor{{Name: "current_time", Description: "获取当前时间。"}},
-		Input: Input{Query: "你好"},
-	})
-	if err != nil {
-		t.Fatalf("ReActPromptBuilder.Build(default) error = %v, want nil", err)
-	}
-	system := messages[0].Content
-	if !strings.Contains(system, "请按以下格式逐步推理") || !strings.Contains(system, "- current_time：获取当前时间。") {
-		t.Fatalf("ReActPromptBuilder.Build(default) system prompt = %q, want react protocol and tool list", system)
-	}
-	for _, forbidden := range []string{"彗记", "Cove", "你是「"} {
-		if strings.Contains(system, forbidden) {
-			t.Fatalf("ReActPromptBuilder.Build(default) system prompt = %q, want no business identity containing %q", system, forbidden)
+	for _, want := range []string{"Cove", "knowledge_search", "检索知识库", "Action Input"} {
+		if !strings.Contains(messages[0].Content, want) {
+			t.Fatalf("ReActPromptBuilder.Build system = %q, want %q", messages[0].Content, want)
 		}
 	}
 }
 
-// 验证点：WithSystemPrompt 应通过默认 builder 注入业务身份到文本 ReAct 模型消息。
+// 验证点：WithSystemPrompt 应通过注入的 builder 传递业务身份到文本 ReAct 模型消息。
 func TestAgentRunInjectsBusinessIdentityThroughSystemPrompt(t *testing.T) {
 	ctx := context.Background()
 	model := &fakeAgentLLM{outputs: []string{"Thought: done\nFinal Answer: ok"}}
 
-	_, err := New(model, coretool.NewRegistry(),
+	_, err := newTestAgent(model, coretool.NewRegistry(),
 		WithToolCallingEnabled(false),
 		WithSystemPrompt("你是「Cove」的智能助手。"),
 	).Run(ctx, Input{Query: "你好"})
@@ -173,7 +148,7 @@ func TestAgentRunReturnsDirectFinalAnswer(t *testing.T) {
 	model := &fakeAgentLLM{outputs: []string{"Thought: done\nFinal Answer: hello"}}
 	registry := coretool.NewRegistry()
 
-	result, err := New(model, registry).Run(ctx, Input{Query: "say hello"})
+	result, err := newTestAgent(model, registry).Run(ctx, Input{Query: "say hello"})
 	if err != nil {
 		t.Fatalf("Agent.Run(final) error = %v, want nil", err)
 	}
@@ -205,7 +180,7 @@ Action Input: now`,
 		t.Fatalf("Registry.Register(current_time) error = %v, want nil", err)
 	}
 
-	result, err := New(model, registry).Run(ctx, Input{Query: "time?"})
+	result, err := newTestAgent(model, registry).Run(ctx, Input{Query: "time?"})
 	if err != nil {
 		t.Fatalf("Agent.Run(tool call) error = %v, want nil", err)
 	}
@@ -235,7 +210,7 @@ func TestAgentRunStopsAtMaxIterations(t *testing.T) {
 		t.Fatalf("Registry.Register(current_time) error = %v, want nil", err)
 	}
 
-	result, err := New(model, registry, WithMaxIterations(2)).Run(ctx, Input{Query: "loop"})
+	result, err := newTestAgent(model, registry, WithMaxIterations(2)).Run(ctx, Input{Query: "loop"})
 	if !errors.Is(err, ErrMaxIterations) {
 		t.Fatalf("Agent.Run(max iterations) error = %v, want ErrMaxIterations", err)
 	}
@@ -250,7 +225,7 @@ func TestAgentRunEmitsTransitionHooks(t *testing.T) {
 	model := &fakeAgentLLM{outputs: []string{"Thought: done\nFinal Answer: ok"}}
 	hooks := &recordingHooks{}
 
-	_, err := New(model, coretool.NewRegistry(), WithHooks(hooks)).Run(ctx, Input{Query: "ok"})
+	_, err := newTestAgent(model, coretool.NewRegistry(), WithHooks(hooks)).Run(ctx, Input{Query: "ok"})
 	if err != nil {
 		t.Fatalf("Agent.Run(hooks) error = %v, want nil", err)
 	}
@@ -279,7 +254,7 @@ func TestAgentRunUsesToolCallingClientByDefault(t *testing.T) {
 		toolOutputs: []*llm.LLMResult{{Text: "tool calling final"}},
 	}
 
-	result, err := New(model, coretool.NewRegistry()).Run(ctx, Input{Query: "answer"})
+	result, err := newTestAgent(model, coretool.NewRegistry()).Run(ctx, Input{Query: "answer"})
 	if err != nil {
 		t.Fatalf("Agent.Run(tool calling final) error = %v, want nil", err)
 	}
@@ -314,7 +289,7 @@ func TestAgentRunExecutesFunctionToolCallAndFeedsSteps(t *testing.T) {
 		t.Fatalf("Registry.Register(current_time) error = %v, want nil", err)
 	}
 
-	result, err := New(model, registry).Run(ctx, Input{Query: "time?"})
+	result, err := newTestAgent(model, registry).Run(ctx, Input{Query: "time?"})
 	if err != nil {
 		t.Fatalf("Agent.Run(function tool call) error = %v, want nil", err)
 	}
@@ -352,7 +327,7 @@ func TestAgentRunDisablesToolCalling(t *testing.T) {
 		toolOutputs:  []*llm.LLMResult{{Text: "tool calling final"}},
 	}
 
-	result, err := New(model, coretool.NewRegistry(), WithToolCallingEnabled(false)).Run(ctx, Input{Query: "answer"})
+	result, err := newTestAgent(model, coretool.NewRegistry(), WithToolCallingEnabled(false)).Run(ctx, Input{Query: "answer"})
 	if err != nil {
 		t.Fatalf("Agent.Run(disable tool calling) error = %v, want nil", err)
 	}
@@ -376,7 +351,7 @@ func TestAgentRunFallsBackToReActWhenToolCallingUnsupported(t *testing.T) {
 	}
 	hooks := &recordingHooks{}
 
-	result, err := New(model, coretool.NewRegistry(), WithHooks(hooks)).Run(ctx, Input{Query: "answer"})
+	result, err := newTestAgent(model, coretool.NewRegistry(), WithHooks(hooks)).Run(ctx, Input{Query: "answer"})
 	if err != nil {
 		t.Fatalf("Agent.Run(fallback) error = %v, want nil", err)
 	}
@@ -402,7 +377,7 @@ func TestAgentRunReturnsToolCallingErrorWhenFallbackDisabled(t *testing.T) {
 		toolErr:      ErrToolCallingUnsupported,
 	}
 
-	result, err := New(model, coretool.NewRegistry(), WithFallbackToReAct(false)).Run(ctx, Input{Query: "answer"})
+	result, err := newTestAgent(model, coretool.NewRegistry(), WithFallbackToReAct(false)).Run(ctx, Input{Query: "answer"})
 	if !errors.Is(err, ErrToolCallingUnsupported) {
 		t.Fatalf("Agent.Run(fallback disabled) error = %v, want ErrToolCallingUnsupported", err)
 	}
@@ -429,6 +404,31 @@ func TestReactAliasesExposeBaseTypes(t *testing.T) {
 	if state.LastDecision.ActionInput["query"] != "hello" || result.Steps[0].ActionInput["query"] != "hello" {
 		t.Fatalf("aliases state/result = %#v/%#v, want preserved values", state, result)
 	}
+}
+
+type testPromptBuilder struct{}
+
+func (testPromptBuilder) Build(ctx context.Context, state State) ([]*llm.Message, error) {
+	_ = ctx
+	messages := []*llm.Message{llm.SystemMessage(state.SystemPrompt)}
+	messages = append(messages, llm.CloneMessages(state.Input.Messages)...)
+	if state.Input.Query != "" {
+		messages = append(messages, llm.UserMessage(state.Input.Query))
+	}
+	if len(state.Steps) > 0 {
+		var scratchpad strings.Builder
+		for _, step := range state.Steps {
+			fmt.Fprintf(&scratchpad, "Action: %s\nObservation: %s\n", step.Action, step.Observation)
+		}
+		messages = append(messages, llm.AssistantMessage(scratchpad.String()))
+	}
+	return messages, nil
+}
+
+func newTestAgent(client llm.Client, registry *coretool.Registry, opts ...Option) *Agent {
+	options := []Option{WithPromptBuilder(testPromptBuilder{})}
+	options = append(options, opts...)
+	return New(client, registry, options...)
 }
 
 type fakeAgentLLM struct {

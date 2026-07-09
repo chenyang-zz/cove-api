@@ -11,9 +11,9 @@ import (
 	ragprompt "github.com/boxify/api-go/internal/core/rag/prompt"
 )
 
+// TestManagerRendersRegisteredFSWithStructData 验证注册 FS 模板后可按命名空间使用结构体渲染。
 func TestManagerRendersRegisteredFSWithStructData(t *testing.T) {
-	// 验证注册 embed/fs 模板来源后，可以用结构体数据按命名空间渲染模板。
-	manager := prompt.NewManager("")
+	manager := prompt.NewManager()
 	if err := manager.RegisterFS("rag", ragprompt.Templates); err != nil {
 		t.Fatalf("RegisterFS error = %v", err)
 	}
@@ -30,9 +30,9 @@ func TestManagerRendersRegisteredFSWithStructData(t *testing.T) {
 	}
 }
 
+// TestManagerRendersRegisteredTextWithStructData 验证注册文本模板后可使用结构体数据渲染。
 func TestManagerRendersRegisteredTextWithStructData(t *testing.T) {
-	// 验证数据库或远端下发的模板文本注册后，可以用业务结构体渲染。
-	manager := prompt.NewManager("")
+	manager := prompt.NewManager()
 	type classifyData struct {
 		Content string
 		Tags    []string
@@ -53,9 +53,9 @@ func TestManagerRendersRegisteredTextWithStructData(t *testing.T) {
 	}
 }
 
+// TestManagerRendersRegisteredTextWithMapData 验证动态外部模板支持 map 数据。
 func TestManagerRendersRegisteredTextWithMapData(t *testing.T) {
-	// 验证动态外部模板仍支持 map 数据，避免阻断数据库配置型提示词。
-	manager := prompt.NewManager("")
+	manager := prompt.NewManager()
 	if err := manager.RegisterText("db/dynamic", "标题：{{ .Title }}"); err != nil {
 		t.Fatalf("RegisterText error = %v", err)
 	}
@@ -69,9 +69,9 @@ func TestManagerRendersRegisteredTextWithMapData(t *testing.T) {
 	}
 }
 
+// TestManagerTextTemplateOverridesFSTemplate 验证同名内存文本模板优先于 FS 模板。
 func TestManagerTextTemplateOverridesFSTemplate(t *testing.T) {
-	// 验证内存文本模板与 FS 模板同名时，优先使用内存文本模板。
-	manager := prompt.NewManager("")
+	manager := prompt.NewManager()
 	fsys := fstest.MapFS{
 		"classify.tmpl": {Data: []byte("fs={{ .Name }}")},
 	}
@@ -91,9 +91,9 @@ func TestManagerTextTemplateOverridesFSTemplate(t *testing.T) {
 	}
 }
 
+// TestManagerValidationErrorsAreClear 验证注册和查找错误包含明确的问题来源。
 func TestManagerValidationErrorsAreClear(t *testing.T) {
-	// 验证注册和查找错误能明确指出 namespace、name 或模板来源问题。
-	manager := prompt.NewManager("")
+	manager := prompt.NewManager()
 	cases := []struct {
 		name string
 		run  func() error
@@ -115,9 +115,9 @@ func TestManagerValidationErrorsAreClear(t *testing.T) {
 	}
 }
 
+// TestManagerMissingTemplateReturnsClearError 验证已注册 namespace 缺少模板时返回模板名。
 func TestManagerMissingTemplateReturnsClearError(t *testing.T) {
-	// 验证已注册 namespace 但模板文件不存在时，返回包含模板名的错误。
-	manager := prompt.NewManager("")
+	manager := prompt.NewManager()
 	if err := manager.RegisterFS("custom", fstest.MapFS{}); err != nil {
 		t.Fatalf("RegisterFS error = %v", err)
 	}
@@ -128,9 +128,9 @@ func TestManagerMissingTemplateReturnsClearError(t *testing.T) {
 	}
 }
 
+// TestManagerRenderTextDoesNotRequireRegistration 验证 RenderText 不依赖注册内容。
 func TestManagerRenderTextDoesNotRequireRegistration(t *testing.T) {
-	// 验证 RenderText 是一次性文本渲染入口，不依赖任何管理器注册内容。
-	manager := prompt.NewManager("")
+	manager := prompt.NewManager()
 
 	out, err := manager.RenderText("hello {{ .Name }}", map[string]string{"Name": "boxify"})
 	if err != nil {
@@ -141,9 +141,9 @@ func TestManagerRenderTextDoesNotRequireRegistration(t *testing.T) {
 	}
 }
 
+// TestManagerAppliesRendererOptions 验证 Manager 构造选项可注入模板函数。
 func TestManagerAppliesRendererOptions(t *testing.T) {
-	// 验证 Manager 复用 Renderer 的 option 机制，支持外部注入模板函数。
-	manager := prompt.NewManager("", prompt.WithFuncs(template.FuncMap{
+	manager := prompt.NewManager(prompt.WithFuncs(template.FuncMap{
 		"wrap": func(text string) string { return "[" + text + "]" },
 	}))
 
@@ -156,9 +156,9 @@ func TestManagerAppliesRendererOptions(t *testing.T) {
 	}
 }
 
+// TestManagerTemplateTextReadsRegisteredTemplate 验证 TemplateText 只读取注册模板原文。
 func TestManagerTemplateTextReadsRegisteredTemplate(t *testing.T) {
-	// 验证 TemplateText 只读取已注册模板原文，不执行模板。
-	manager := prompt.NewManager("")
+	manager := prompt.NewManager()
 	if err := manager.RegisterText("db/raw", "{{ .Name }}"); err != nil {
 		t.Fatalf("RegisterText error = %v", err)
 	}
@@ -169,5 +169,21 @@ func TestManagerTemplateTextReadsRegisteredTemplate(t *testing.T) {
 	}
 	if out != "{{ .Name }}" {
 		t.Fatalf("TemplateText = %q, want raw template", out)
+	}
+}
+
+// TestZeroValueManagerSupportsRegistration 验证零值 Manager 会通过 ensure 初始化注册所需状态。
+func TestZeroValueManagerSupportsRegistration(t *testing.T) {
+	manager := &prompt.Manager{}
+	if err := manager.RegisterText("custom/example", "hello {{ .Name }}"); err != nil {
+		t.Fatalf("RegisterText error = %v, want nil", err)
+	}
+
+	out, err := manager.Render("custom/example", map[string]string{"Name": "Cove"})
+	if err != nil {
+		t.Fatalf("Render error = %v, want nil", err)
+	}
+	if out != "hello Cove" {
+		t.Fatalf("Render output = %q, want hello Cove", out)
 	}
 }

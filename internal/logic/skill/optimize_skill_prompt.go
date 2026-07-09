@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	corellm "github.com/boxify/api-go/internal/core/llm"
-	"github.com/boxify/api-go/internal/core/prompt"
 	"github.com/boxify/api-go/internal/observability/xlog"
+	"github.com/boxify/api-go/internal/prompts/promptsgen"
 	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/request"
 	"github.com/boxify/api-go/internal/transport/http/response"
@@ -38,7 +38,7 @@ func (l *OptimizeSkillPromptLogic) OptimizeSkillPrompt(userID uuid.UUID, input *
 	if err != nil {
 		return nil, err
 	}
-	promptText, err := l.svcCtx.PromptManager.AgentPrompts.OptimizePrompt(&prompt.OptimizePromptData{RawPrompt: rawPrompt})
+	promptText, err := l.svcCtx.PromptClient.SkillOptimizePrompt(&promptsgen.SkillOptimizePromptParams{RawPrompt: rawPrompt})
 	if err != nil {
 		return nil, err
 	}

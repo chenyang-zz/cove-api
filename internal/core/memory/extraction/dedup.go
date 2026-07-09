@@ -14,7 +14,6 @@ import (
 	"github.com/boxify/api-go/internal/core/jsonx"
 	"github.com/boxify/api-go/internal/core/llm"
 	"github.com/boxify/api-go/internal/core/memory"
-	"github.com/boxify/api-go/internal/core/prompt"
 	"github.com/boxify/api-go/internal/util"
 	"github.com/boxify/api-go/internal/xerr"
 )
@@ -235,20 +234,20 @@ func (o *MemoryOrchestrator) mergeInto(canon *memory.EntityNode, other *memory.E
 func (o *MemoryOrchestrator) judgeSameByLLM(ctx context.Context, a *memory.EntityNode, b *memory.EntityNode, txt float64, emb float64,
 	con bool) (*memory.DedupDecision,
 	error) {
-	promptText, err := o.prompt.MemoryPrompts.DedupEntity(&prompt.DedupEntityData{
-		EntityA: prompt.DedupEntity{
+	promptText, err := o.prompt.DedupEntity(&memory.DedupPromptInput{
+		EntityA: memory.DedupEntityPromptInput{
 			Name:        a.Name,
 			Type:        a.Type,
 			Description: a.Description,
 			Aliases:     a.Aliases,
 		},
-		EntityB: prompt.DedupEntity{
+		EntityB: memory.DedupEntityPromptInput{
 			Name:        b.Name,
 			Type:        b.Type,
 			Description: b.Description,
 			Aliases:     b.Aliases,
 		},
-		Context: prompt.DedupContext{
+		Context: memory.DedupPromptContext{
 			NameTextSim:  txt,
 			NameEmbedSim: emb,
 			NameContains: con,

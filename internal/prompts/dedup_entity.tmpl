@@ -5,13 +5,13 @@
 - 名称: {{ .EntityA.Name }}
 - 类型: {{ .EntityA.Type }}
 - 描述: {{ .EntityA.Description }}
-- 别名: {{ join ", " EntityA.Aliases }}
+- 别名: {{ join ", " .EntityA.Aliases }}
 
 ===实体 B===
 - 名称: {{ .EntityB.Name }}
 - 类型: {{ .EntityB.Type }}
 - 描述: {{ .EntityB.Description }}
-- 别名: {{ join ", " EntityB.Aliases }}
+- 别名: {{ join ", " .EntityB.Aliases }}
 
 ===参考特征===
 - 名称文本相似度: {{ .Context.NameTextSim }}

@@ -20,15 +20,12 @@ type Renderer struct {
 	funcs template.FuncMap
 }
 
-// Manager 管理多个提示词来源，并兼容旧的磁盘 root 模板目录。
+// Manager 管理多个显式注册的提示词来源。
 //
-// Manager 的模板查找顺序固定为：内存文本模板、已注册命名空间文件系统、
-// 旧 root 目录。Manager 不做并发写保护；注册模板来源应在并发渲染前完成。
+// Manager 的模板查找顺序固定为：内存文本模板、已注册命名空间文件系统。
+// Manager 不做并发写保护；注册模板来源应在并发渲染前完成。
 type Manager struct {
-	root          string
-	texts         map[string]string
-	sources       map[string]TemplateFS
-	funcs         template.FuncMap
-	MemoryPrompts *MemoryPrompts
-	AgentPrompts  *AgentPrompts
+	texts   map[string]string
+	sources map[string]TemplateFS
+	funcs   template.FuncMap
 }

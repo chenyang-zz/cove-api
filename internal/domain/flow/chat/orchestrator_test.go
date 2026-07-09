@@ -11,11 +11,14 @@ import (
 
 	corereact "github.com/boxify/api-go/internal/core/agent/react"
 	corellm "github.com/boxify/api-go/internal/core/llm"
+	coreprompt "github.com/boxify/api-go/internal/core/prompt"
 	coretool "github.com/boxify/api-go/internal/core/tool"
 	flow "github.com/boxify/api-go/internal/domain/flow"
 	"github.com/boxify/api-go/internal/domain/types"
 	"github.com/boxify/api-go/internal/infrastructure/security"
 	"github.com/boxify/api-go/internal/models"
+	appprompts "github.com/boxify/api-go/internal/prompts"
+	"github.com/boxify/api-go/internal/prompts/promptsgen"
 	"github.com/boxify/api-go/internal/repository"
 	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/util"
@@ -388,12 +391,18 @@ func newFlowChatTestServiceContext(t *testing.T, userID uuid.UUID, llmClient *fa
 	}
 	llmManager := corellm.NewManager()
 	llmManager.Register("fake", fakeFlowLLMFactory{client: llmClient})
+	promptManager := coreprompt.NewManager()
+	if err := appprompts.Register(promptManager); err != nil {
+		t.Fatalf("Register prompts error = %v, want nil", err)
+	}
 	return &svc.ServiceContext{
 		SecretCipher:      cipher,
 		LLMManager:        llmManager,
 		ModelConfigRepo:   &fakeFlowModelConfigRepo{rows: []*models.ModelConfig{{ID: uuid.New(), UserID: userID, Type: string(types.ChatModelType), Provider: "fake", ModelName: "fake-chat", APIKeyEncrypted: encrypted, IsDefault: true}}},
 		MessageRepo:       &fakeFlowMessageRepo{},
 		KnowledgeBaseRepo: &fakeFlowKnowledgeBaseRepo{},
+		PromptManager:     promptManager,
+		PromptClient:      promptsgen.NewClient(promptManager),
 	}
 }
 

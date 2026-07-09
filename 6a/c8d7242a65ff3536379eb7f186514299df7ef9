@@ -1,0 +1,39 @@
+internal/core/prompt/doc.go
+  s_a5f282227fb606::t_0017b3fcd80b2b 6,8-11,14-19
+internal/prompts/extract_statement.tmpl
+  s_a5f282227fb606::t_e49e6e04f99fb7 91
+internal/core/prompt/memory.go
+  s_a5f282227fb606::t_0017b3fcd80b2b 9-10
+internal/prompts/prompts.go
+  s_a5f282227fb606::t_e49e6e04f99fb7 1-49
+internal/prompts/prompts_test.go
+  s_a5f282227fb606::t_00b335d42878e7 1-17,27,36-45
+  s_a5f282227fb606::t_382e9c1e513e80 18-26,28-35
+internal/svc/context.go
+  s_a5f282227fb606::t_d32b8ee2df82fc 30,95-99,111,251
+  s_a5f282227fb606::t_402f5e8b273dcf 248-250
+  s_a5f282227fb606::t_567fffa6fa1ce5 252-253
+  s_a5f282227fb606::t_7402bc2bad9699 205-206,212-247
+internal/transport/http/router_test.go
+  s_a5f282227fb606::t_d32b8ee2df82fc 30,100-103,124
+internal/core/prompt/agent.go
+  s_a5f282227fb606::t_0017b3fcd80b2b 9-10
+internal/logic/skill/skill_test.go
+  s_a5f282227fb606::t_d32b8ee2df82fc 14,197-200,206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6ac8d7242a65ff3536379eb7f186514299df7ef9",
+  "prompts": {},
+  "sessions": {
+    "s_a5f282227fb606": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f13c4-cb77-7061-8d78-bfdb2b2034a3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

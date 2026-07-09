@@ -1,0 +1,151 @@
+internal/logic/skill/helper.go
+  s_bed6061d2f5706::t_1ddd3e049b263a 1-6,8-19,21-26,29-51
+  s_bed6061d2f5706::t_58cbcbeb4cfad9 7,27-28
+  s_bed6061d2f5706::t_0991d90c4c4083 20
+internal/mapper/skill_test.go
+  s_bed6061d2f5706::t_cc24a74eabd141 39
+  s_bed6061d2f5706::t_b541fe8a596c26 35,40-41
+  s_bed6061d2f5706::t_4a8aafac33fd87 1-34,36-38,42-43
+internal/svc/context.go
+  s_bed6061d2f5706::t_c2888c3a19fa27 63,189
+internal/logic/skill/update_skill.go
+  s_bed6061d2f5706::t_423241b3156ce9 6,45,50,55,63,81
+  s_bed6061d2f5706::t_166e730ce6a737 5,7-44,46-49,51-54,56-62,64-80,82-102
+  s_bed6061d2f5706::t_e8ee71d200d4c2 2-4
+  s_bed6061d2f5706::t_18f8ab442ba1ca 103
+  s_bed6061d2f5706::t_7c8a9dcf0bca78 1
+internal/logic/skill/copy_builtin_skill.go
+  s_bed6061d2f5706::t_652b4977504a52 9-35
+  s_bed6061d2f5706::t_91fdc3881d8849 6-8
+  s_bed6061d2f5706::t_cd53ba7a545de6 36
+  s_bed6061d2f5706::t_654c189b9e03c1 1-5
+internal/transport/http/router_test.go
+  s_bed6061d2f5706::t_3f93876ebe17f2 1390-1411,1416-1442,1450,1453-1454,1462,1465-1484,1517-1519
+  s_bed6061d2f5706::t_ea06e552ef810c 1389,1443-1449,1451-1452,1455-1461,1463-1464,1485-1516
+  s_bed6061d2f5706::t_e8744773a782bd 20,107
+  s_bed6061d2f5706::t_c6c60d50bd21f4 1412-1415
+  s_bed6061d2f5706::t_2af2cd3c033433 538-622
+  s_bed6061d2f5706::t_a5433541feeca6 119
+internal/logic/skill/skill_test.go
+  s_bed6061d2f5706::t_31bec230c8f5e6 1-90,99-108,124-217,220-454
+  s_bed6061d2f5706::t_4a8aafac33fd87 91-98,109-123
+  s_bed6061d2f5706::t_c6cb271df4873c 218-219
+internal/logic/skill/delete_skill.go
+  s_bed6061d2f5706::t_7f56abed9fe5f0 5-41
+  s_bed6061d2f5706::t_746f1cc9c19e59 2-4
+  s_bed6061d2f5706::t_f629f45b63e0f0 42-43
+  s_bed6061d2f5706::t_b3a48efa952b77 1
+internal/transport/http/router.go
+  h_e1f1392360ad67 52,68
+internal/transport/http/response/skill.go
+  s_bed6061d2f5706::t_6aab7a5ff9304e 15-22,24
+  s_bed6061d2f5706::t_c55304d9e70bc3 9-12,23
+  h_e1f1392360ad67 1-8,13-14,25
+internal/transport/http/routes/skill.go
+  h_e1f1392360ad67 1-49,51-58
+  s_bed6061d2f5706::t_ff9834e39d23c2 50
+internal/models/skill.go
+  s_bed6061d2f5706::t_aa0af9ff67e03e 61-68
+  h_e1f1392360ad67 75-77
+  s_bed6061d2f5706::t_facaeb1bf15b59 10-12,18-59,69-74
+internal/infrastructure/db/migration/runner.go
+  h_e1f1392360ad67 53
+internal/logic/skill/list_skills.go
+  s_bed6061d2f5706::t_cf25ce6dd78d34 5-36
+  s_bed6061d2f5706::t_722c6909818716 2-4
+  s_bed6061d2f5706::t_3443f28b80aecd 37
+  s_bed6061d2f5706::t_948d9a228ff03d 1
+internal/svc/context_test.go
+  s_bed6061d2f5706::t_34479edb6d360c 123,133,158
+internal/repository/postgres/skill_test.go
+  s_bed6061d2f5706::t_aa0af9ff67e03e 45
+  s_bed6061d2f5706::t_a2b8b20550046a 1-40,46-59,64-85
+  s_bed6061d2f5706::t_4a8aafac33fd87 41-44,60-63
+internal/transport/http/request/skill.go
+  h_e1f1392360ad67 1-9,12-14,17-21,23-24,26-30,32-40,42-48
+  s_bed6061d2f5706::t_12a61b5912849e 15-16,25,31,41
+  s_bed6061d2f5706::t_f12c2f49eaa5ab 10-11,22
+internal/logic/skill/create_skill.go
+  s_bed6061d2f5706::t_946886968f76c2 5,7-9,30,38-40,42,44-62,64-76
+  s_bed6061d2f5706::t_423241b3156ce9 6,35-37,41,43,63
+  s_bed6061d2f5706::t_b2ff5b7633f84c 2-4
+  s_bed6061d2f5706::t_16bf3a4f2c25ee 10-12,27-29
+  s_bed6061d2f5706::t_2f4af10098a4c7 31-34
+  s_bed6061d2f5706::t_55f5eb1c4f1f5d 77
+  s_bed6061d2f5706::t_c006422d710d6a 1,13-26
+internal/mapper/skill.go
+  s_bed6061d2f5706::t_a6a8c49a830fcc 4-5,10-35,58
+  s_bed6061d2f5706::t_d56044bafb5c05 39-41,43,45-46,48-54,68
+  s_bed6061d2f5706::t_c55304d9e70bc3 37-38,42,44,47
+  s_bed6061d2f5706::t_f10372a8654b5b 1-3,6-9,36,55-57,59-67,69-82
+internal/logic/skill/list_builtin_skills.go
+  s_bed6061d2f5706::t_60f5386f403a11 8-31
+  s_bed6061d2f5706::t_edbeb86edf4d09 5-7
+  s_bed6061d2f5706::t_226ed6b83b7d87 32
+  s_bed6061d2f5706::t_1ed0ab370eb6db 1-4
+internal/transport/http/handler/skill.go
+  s_bed6061d2f5706::t_ff9834e39d23c2 25-26,30-31,39-40,44-45,51-54,58-59,63-64,71-73,77-78,82-83,89-92,96-97,108-115,119-120,124-125,132-134,138-139,142-143
+  s_bed6061d2f5706::t_d4f9cd4c092548 23,28,32,37,42,46,56,61,65,75,80,84,94,98-103,117,122,126,136
+  s_bed6061d2f5706::t_fd51003592d139 20-22
+  s_bed6061d2f5706::t_339eb4d6e9ff3d 24
+  s_bed6061d2f5706::t_96d075978fd87f 27
+  s_bed6061d2f5706::t_9c97efdf299d11 29
+  s_bed6061d2f5706::t_25426424d4638d 33-36
+  s_bed6061d2f5706::t_13e8f5088e09ed 38
+  s_bed6061d2f5706::t_3733074ba974ad 41
+  s_bed6061d2f5706::t_961ffb05b9d14a 43
+  s_bed6061d2f5706::t_52636960972405 47-50
+  s_bed6061d2f5706::t_7d3d767c6cceec 55
+  s_bed6061d2f5706::t_970a4db54ed741 57
+  s_bed6061d2f5706::t_a730316bb9cfb0 60
+  s_bed6061d2f5706::t_5d01c48ef0424f 62
+  s_bed6061d2f5706::t_bc07e742d34147 66-70
+  s_bed6061d2f5706::t_2603e64fcfe2aa 74
+  s_bed6061d2f5706::t_341133635e2b89 76
+  s_bed6061d2f5706::t_d5d3108a034c1d 79
+  s_bed6061d2f5706::t_bd2fed9c2af496 81
+  s_bed6061d2f5706::t_9f9695825f0816 85-88
+  s_bed6061d2f5706::t_70e0fbe5ce246b 93
+  s_bed6061d2f5706::t_17b3a83b36db53 95
+  s_bed6061d2f5706::t_980b068e82c247 104-107
+  s_bed6061d2f5706::t_4db3e328b66ede 116
+  s_bed6061d2f5706::t_7557c39dffbf38 118
+  s_bed6061d2f5706::t_d1c4cf6e4d01ae 121
+  s_bed6061d2f5706::t_a32a2333d46192 123
+  s_bed6061d2f5706::t_8d357c36d9b2b9 127-131
+  s_bed6061d2f5706::t_9c3f41bf46b866 135
+  s_bed6061d2f5706::t_4a872f35c61aec 137
+  s_bed6061d2f5706::t_a4b3cddcd3c027 140-141
+  s_bed6061d2f5706::t_2460a6b0ba20f0 144-145
+  s_bed6061d2f5706::t_4f8c620373726e 1-19
+internal/models/skill_test.go
+  s_bed6061d2f5706::t_4a8aafac33fd87 1-56
+internal/logic/skill/optimize_skill_prompt.go
+  s_bed6061d2f5706::t_fba4f59bf1caf8 37
+  s_bed6061d2f5706::t_ae7f343e8660b8 5,7-35,38-52
+  s_bed6061d2f5706::t_423241b3156ce9 6,36
+  s_bed6061d2f5706::t_9c74c3c606d4bb 2-4
+  s_bed6061d2f5706::t_990b5110e9d80c 53
+  s_bed6061d2f5706::t_96b73e75bc5764 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "32cd81f02e93dc4bba1f5cfc6c54defb1527e11b",
+  "prompts": {},
+  "humans": {
+    "h_e1f1392360ad67": {
+      "author": "chenyang <904852749@qq.com>"
+    }
+  },
+  "sessions": {
+    "s_bed6061d2f5706": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1817-2478-7702-8e5a-fc4304ca0bc4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

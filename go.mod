@@ -2,8 +2,6 @@ module github.com/boxify/api-go
 
 go 1.25.12
 
-toolchain go1.25.12
-
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/PuerkitoBio/goquery v1.12.0

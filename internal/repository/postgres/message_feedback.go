@@ -16,8 +16,6 @@ type MessageFeedbackRepository struct {
 	db *gorm.DB
 }
 
-
-
 func NewMessageFeedbackRepository(db *gorm.DB) repository.MessageFeedbackRepository {
 	return &MessageFeedbackRepository{db: db}
 }

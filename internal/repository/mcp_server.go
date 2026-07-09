@@ -15,7 +15,7 @@ type MCPServerRepository interface {
 	Update(ctx context.Context, userID uuid.UUID, mCPServer *models.MCPServer) (*models.MCPServer, error)
 	UpdateFields(ctx context.Context, userID uuid.UUID, mCPServerID uuid.UUID, mCPServer *models.MCPServer, fields *MCPServerUpdateFields) (*models.MCPServer, error)
 	Delete(ctx context.Context, userID uuid.UUID, mCPServerID uuid.UUID) error
-	FindByName(ctx context.Context, userID uuid.UUID, Name string )(*models.MCPServer, error)
+	FindByName(ctx context.Context, userID uuid.UUID, Name string) (*models.MCPServer, error)
 }
 
 type MCPServerUpdateFields struct {

@@ -16,8 +16,6 @@ type MCPServerRepository struct {
 	db *gorm.DB
 }
 
-
-
 func NewMCPServerRepository(db *gorm.DB) repository.MCPServerRepository {
 	return &MCPServerRepository{db: db}
 }

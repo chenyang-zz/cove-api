@@ -16,8 +16,6 @@ type AgentPersonaRepository struct {
 	db *gorm.DB
 }
 
-
-
 func NewAgentPersonaRepository(db *gorm.DB) repository.AgentPersonaRepository {
 	return &AgentPersonaRepository{db: db}
 }

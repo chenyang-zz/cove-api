@@ -17,7 +17,7 @@ import (
 type Tag struct {
 	ID        uuid.UUID `gorm:"column:id;type:uuid;primaryKey"`
 	UserID    uuid.UUID `gorm:"column:user_id;type:uuid;not null;index;uniqueIndex:uq_tag_user_name"`
-	Name      string    `gorm:"column:name;size:64;not null;uniqueIndex:uq_tag_user_name""`
+	Name      string    `gorm:"column:name;size:64;not null;uniqueIndex:uq_tag_user_name"`
 	Color     string    `gorm:"column:color;size:16;not null;default:'#155EEF'"`
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`

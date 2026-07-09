@@ -21,6 +21,7 @@ import (
 	ragchunker "github.com/boxify/api-go/internal/core/rag/chunker"
 	ragsearch "github.com/boxify/api-go/internal/core/rag/search"
 	"github.com/boxify/api-go/internal/core/rag/webcrawl"
+	domainskills "github.com/boxify/api-go/internal/domain/skills"
 	"github.com/boxify/api-go/internal/domain/types"
 	infraes "github.com/boxify/api-go/internal/infrastructure/db/es"
 	"github.com/boxify/api-go/internal/infrastructure/queue"
@@ -102,6 +103,10 @@ func newTestRouterWithConfigAndOverrides(t *testing.T, cfg config.Config, config
 	if err := appprompts.Register(promptManager); err != nil {
 		t.Fatalf("register prompts: %v", err)
 	}
+	skillRegistry, err := domainskills.NewRegistry()
+	if err != nil {
+		t.Fatalf("new skill registry: %v", err)
+	}
 	svcCtx := &svc.ServiceContext{
 		Config:            cfg,
 		UserRepo:          newTestUserRepository(),
@@ -119,6 +124,7 @@ func newTestRouterWithConfigAndOverrides(t *testing.T, cfg config.Config, config
 		RAGChunkRepo:      ragChunkRepo,
 		RAGSearcher:       ragsearch.NewSearcher[models.RAGChunkSource](esClient, ragsearch.WithIndex(cfg.Rag.ChunkIndex), ragsearch.WithEmbeddingDim(cfg.Rag.EmbeddingDim), ragsearch.WithSourceDecoder[models.RAGChunkSource](ragChunkRepo.DecodeSource)),
 		RAGWebCrawler:     webcrawl.NewCrawler(webcrawl.WithHTTPClient(testWebCrawlerHTTPClient{}), webcrawl.WithURLGuard(testWebCrawlerGuard{})),
+		SkillRegistry:     skillRegistry,
 		Realtime:          testRealtimeBroker{},
 		TaskProducer:      testTaskProducer{},
 		LLMManager:        llmManager,
@@ -1445,6 +1451,28 @@ func TestSkillRoutesSupportCRUDAndOptimizePrompt(t *testing.T) {
 	}
 	if !strings.Contains(list.Body.String(), createBody.Data.ID) {
 		t.Fatalf("list body = %s, want created skill id", list.Body.String())
+	}
+
+	builtinList := httptest.NewRecorder()
+	builtinListReq := httptest.NewRequest(http.MethodGet, "/api/skill/builtin", nil)
+	builtinListReq.Header.Set("Authorization", "Bearer dev-token")
+	router.ServeHTTP(builtinList, builtinListReq)
+	if builtinList.Code != http.StatusOK {
+		t.Fatalf("builtin list status = %d body=%s", builtinList.Code, builtinList.Body.String())
+	}
+	if !strings.Contains(builtinList.Body.String(), `"key":"kb_study"`) || !strings.Contains(builtinList.Body.String(), `"name":"知识库学习"`) {
+		t.Fatalf("builtin list body = %s, want kb_study template", builtinList.Body.String())
+	}
+
+	copyBuiltin := httptest.NewRecorder()
+	copyBuiltinReq := httptest.NewRequest(http.MethodPost, "/api/skill/builtin/"+domainskills.IDKBStudy.String(), nil)
+	copyBuiltinReq.Header.Set("Authorization", "Bearer dev-token")
+	router.ServeHTTP(copyBuiltin, copyBuiltinReq)
+	if copyBuiltin.Code != http.StatusOK {
+		t.Fatalf("copy builtin status = %d body=%s", copyBuiltin.Code, copyBuiltin.Body.String())
+	}
+	if !strings.Contains(copyBuiltin.Body.String(), `"name":"知识库学习"`) || !strings.Contains(copyBuiltin.Body.String(), `"is_builtin":true`) {
+		t.Fatalf("copy builtin body = %s, want copied builtin skill", copyBuiltin.Body.String())
 	}
 
 	updateByPatch := httptest.NewRecorder()

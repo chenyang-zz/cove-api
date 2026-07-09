@@ -8,6 +8,7 @@ import (
 
 	corellm "github.com/boxify/api-go/internal/core/llm"
 	"github.com/boxify/api-go/internal/core/prompt"
+	domainskills "github.com/boxify/api-go/internal/domain/skills"
 	"github.com/boxify/api-go/internal/domain/types"
 	"github.com/boxify/api-go/internal/infrastructure/security"
 	"github.com/boxify/api-go/internal/models"
@@ -230,16 +231,79 @@ func TestOptimizeSkillPromptRejectsMissingModel(t *testing.T) {
 	}
 }
 
-// TestBuiltinSkillEndpointsReturnNotImplemented 验证内置技能相关逻辑暂未实现。
-func TestBuiltinSkillEndpointsReturnNotImplemented(t *testing.T) {
+// TestListBuiltinSkillsReturnsRegisteredTemplates 验证内置技能列表会返回代码注册的模板。
+func TestListBuiltinSkillsReturnsRegisteredTemplates(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
-	skillID := uuid.New()
-	if _, err := NewListBuiltinSkillsLogic(ctx, &svc.ServiceContext{}).ListBuiltinSkills(userID); xerr.From(err).Kind != xerr.KindBadRequest {
-		t.Fatalf("ListBuiltinSkills kind = %v, want bad_request", xerr.From(err).Kind)
+	registry, err := domainskills.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry error = %v, want nil", err)
 	}
-	if _, err := NewCopyBuiltinSkillLogic(ctx, &svc.ServiceContext{}).CopyBuiltinSkill(userID, &request.UriSkillIDRequest{ID: skillID.String()}); xerr.From(err).Kind != xerr.KindBadRequest {
-		t.Fatalf("CopyBuiltinSkill kind = %v, want bad_request", xerr.From(err).Kind)
+
+	out, err := NewListBuiltinSkillsLogic(ctx, &svc.ServiceContext{SkillRegistry: registry}).ListBuiltinSkills(userID)
+	if err != nil {
+		t.Fatalf("ListBuiltinSkills error = %v, want nil", err)
+	}
+	if len(out.List) != 3 {
+		t.Fatalf("ListBuiltinSkills len = %d, want 3", len(out.List))
+	}
+	first := out.List[0]
+	if first.ID != domainskills.IDKBStudy || first.Key != domainskills.KeyKBStudy || first.Name != "知识库学习" || !first.IsBuiltin {
+		t.Fatalf("ListBuiltinSkills first = %#v, want kb_study builtin", first)
+	}
+	if !slices.Equal(first.ToolKeys, []string{"knowledge_search"}) {
+		t.Fatalf("ListBuiltinSkills first ToolKeys = %#v, want knowledge_search", first.ToolKeys)
+	}
+	if first.Config == nil || len(first.Config.QuickPrompt) != 4 {
+		t.Fatalf("ListBuiltinSkills first Config = %#v, want quick prompts", first.Config)
+	}
+}
+
+// TestCopyBuiltinSkillCreatesUserEditableSkill 验证复制内置技能会创建用户自己的可编辑技能。
+func TestCopyBuiltinSkillCreatesUserEditableSkill(t *testing.T) {
+	ctx := context.Background()
+	userID := uuid.New()
+	repo := newFakeSkillRepository()
+	registry, err := domainskills.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry error = %v, want nil", err)
+	}
+
+	out, err := NewCopyBuiltinSkillLogic(ctx, &svc.ServiceContext{SkillRegistry: registry, SkillRepo: repo}).CopyBuiltinSkill(userID, &request.UriSkillIDRequest{ID: domainskills.IDKBStudy.String()})
+	if err != nil {
+		t.Fatalf("CopyBuiltinSkill error = %v, want nil", err)
+	}
+	if repo.created == nil {
+		t.Fatalf("CopyBuiltinSkill did not create row")
+	}
+	if repo.created.ID == uuid.Nil || repo.created.ID == domainskills.IDKBStudy {
+		t.Fatalf("created ID = %s, want new non-template uuid", repo.created.ID)
+	}
+	if repo.created.UserID != userID || !repo.created.IsBuiltin || repo.created.Name != "知识库学习" {
+		t.Fatalf("created row = %#v, want user builtin copy", repo.created)
+	}
+	if !slices.Equal([]string(repo.created.ToolKeys), []string{"knowledge_search"}) {
+		t.Fatalf("created ToolKeys = %#v, want knowledge_search", repo.created.ToolKeys)
+	}
+	if len(repo.created.Config.QuickPrompt) != 4 {
+		t.Fatalf("created Config = %#v, want copied quick prompts", repo.created.Config)
+	}
+	if out.ID != repo.created.ID || out.Key != "" || !out.IsBuiltin {
+		t.Fatalf("CopyBuiltinSkill response = %#v, want persisted user skill without builtin key", out)
+	}
+}
+
+// TestCopyBuiltinSkillRejectsUnknownBuiltinID 验证复制不存在的内置技能会返回 not_found。
+func TestCopyBuiltinSkillRejectsUnknownBuiltinID(t *testing.T) {
+	registry, err := domainskills.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry error = %v, want nil", err)
+	}
+
+	_, err = NewCopyBuiltinSkillLogic(context.Background(), &svc.ServiceContext{SkillRegistry: registry, SkillRepo: newFakeSkillRepository()}).
+		CopyBuiltinSkill(uuid.New(), &request.UriSkillIDRequest{ID: uuid.NewString()})
+	if xerr.From(err).Kind != xerr.KindNotFound {
+		t.Fatalf("CopyBuiltinSkill unknown kind = %v, want not_found", xerr.From(err).Kind)
 	}
 }
 

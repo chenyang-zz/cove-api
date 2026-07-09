@@ -2,9 +2,7 @@ package skill
 
 import (
 	"context"
-	"strings"
 
-	"github.com/boxify/api-go/internal/models"
 	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/request"
 	"github.com/boxify/api-go/internal/xerr"
@@ -22,18 +20,6 @@ func skillIDFromInput(input *request.UriSkillIDRequest) (uuid.UUID, error) {
 		return uuid.Nil, xerr.BadRequest("技能 ID 无效")
 	}
 	return id, nil
-}
-
-func normalizeSkillToolKeys(values []string) models.StringList {
-	out := make(models.StringList, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		out = append(out, value)
-	}
-	return out
 }
 
 func resolveSkillKnowledgeBaseID(ctx context.Context, svcCtx *svc.ServiceContext, userID uuid.UUID, raw string) (*uuid.UUID, error) {

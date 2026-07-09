@@ -13,6 +13,7 @@ import (
 
 type SkillResponse struct {
 	ID          uuid.UUID            `json:"id"`
+	Key         string               `json:"key,omitempty"`
 	Name        string               `json:"name"`
 	Description string               `json:"description"`
 	Icon        string               `json:"icon"`

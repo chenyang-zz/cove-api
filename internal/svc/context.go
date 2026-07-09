@@ -15,6 +15,7 @@ import (
 	ragparser "github.com/boxify/api-go/internal/core/rag/documentparse"
 	ragsearch "github.com/boxify/api-go/internal/core/rag/search"
 	"github.com/boxify/api-go/internal/core/rag/webcrawl"
+	domainskills "github.com/boxify/api-go/internal/domain/skills"
 	infraes "github.com/boxify/api-go/internal/infrastructure/db/es"
 	dbneo4j "github.com/boxify/api-go/internal/infrastructure/db/neo4j"
 	dbpostgres "github.com/boxify/api-go/internal/infrastructure/db/postgres"
@@ -71,6 +72,7 @@ type ServiceContext struct {
 	RAGDocumentParser   *ragparser.Parser
 	RAGChunker          *ragchunker.Chunker
 	RAGWebCrawler       *webcrawl.Crawler
+	SkillRegistry       *domainskills.Registry
 
 	SecretCipher *security.SecretCipher
 	TokenIssuer  *security.TokenIssuer
@@ -98,6 +100,10 @@ func New(ctx context.Context, cfg config.Config) (*ServiceContext, error) {
 	if err := appprompts.Register(promptManager); err != nil {
 		return nil, xerr.Wrapf(err, "注册提示词失败")
 	}
+	skillRegistry, err := domainskills.NewRegistry()
+	if err != nil {
+		return nil, xerr.Wrapf(err, "注册内置技能失败")
+	}
 
 	db, err := dbpostgres.NewGormDB(ctx, dbpostgres.Config{URL: cfg.Database.URL})
 	if err != nil {
@@ -114,6 +120,7 @@ func New(ctx context.Context, cfg config.Config) (*ServiceContext, error) {
 		PromptClient:   promptsgen.NewClient(promptManager),
 		LLMManager:     BuildLLMManager(),
 		MCPToolService: coremcp.NewService(coremcp.Options{}),
+		SkillRegistry:  skillRegistry,
 	}
 	bindPostgresRepositories(svcCtx, db)
 
@@ -245,6 +252,7 @@ func newTxContext(s *ServiceContext) ServiceContext {
 		RAGDocumentParser:   s.RAGDocumentParser,
 		RAGChunker:          s.RAGChunker,
 		RAGWebCrawler:       s.RAGWebCrawler,
+		SkillRegistry:       s.SkillRegistry,
 		SecretCipher:        s.SecretCipher,
 		TokenIssuer:         s.TokenIssuer,
 		PromptManager:       s.PromptManager,

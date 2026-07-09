@@ -2,6 +2,8 @@ package skill
 
 import (
 	"context"
+
+	"github.com/boxify/api-go/internal/mapper"
 	"github.com/boxify/api-go/internal/observability/xlog"
 	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/response"
@@ -28,5 +30,8 @@ func NewListBuiltinSkillsLogic(ctx context.Context, svcCtx *svc.ServiceContext) 
 
 // ListBuiltinSkills 查询内置skill
 func (l *ListBuiltinSkillsLogic) ListBuiltinSkills(userID uuid.UUID) (*response.ListResponse[*response.SkillResponse], error) {
-	return nil, xerr.BadRequest("内置技能暂未实现")
+	if l.svcCtx == nil || l.svcCtx.SkillRegistry == nil {
+		return nil, xerr.Internal("内置技能注册表未初始化", nil)
+	}
+	return mapper.BuiltinSkillsToListResponse(l.svcCtx.SkillRegistry.List()), nil
 }

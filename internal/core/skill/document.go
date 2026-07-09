@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"strings"
 
+	"github.com/boxify/api-go/internal/core/valuex"
 	"gopkg.in/yaml.v3"
 )
 
@@ -88,22 +89,22 @@ func parseMetadata(header string) (Metadata, error) {
 	}
 	metadata := Metadata{}
 	var err error
-	if metadata.Name, err = requiredString(raw, "name"); err != nil {
+	if metadata.Name, err = valuex.RequiredString(raw, "name"); err != nil {
 		return Metadata{}, err
 	}
-	if metadata.Description, err = requiredString(raw, "description"); err != nil {
+	if metadata.Description, err = valuex.RequiredString(raw, "description"); err != nil {
 		return Metadata{}, err
 	}
-	if metadata.Version, err = optionalString(raw, "version"); err != nil {
+	if metadata.Version, err = valuex.OptionalString(raw, "version"); err != nil {
 		return Metadata{}, err
 	}
-	if metadata.Icon, err = optionalString(raw, "icon"); err != nil {
+	if metadata.Icon, err = valuex.OptionalString(raw, "icon"); err != nil {
 		return Metadata{}, err
 	}
-	if metadata.Tags, err = optionalStringList(raw, "tags"); err != nil {
+	if metadata.Tags, err = valuex.OptionalStringList(raw, "tags"); err != nil {
 		return Metadata{}, err
 	}
-	if metadata.Tools, err = optionalStringList(raw, "tools"); err != nil {
+	if metadata.Tools, err = valuex.OptionalStringList(raw, "tools"); err != nil {
 		return Metadata{}, err
 	}
 	if metadata.Requirements, err = parseRequirements(raw["requirements"]); err != nil {
@@ -124,63 +125,17 @@ func parseRequirements(raw any) (Requirements, error) {
 	}
 	requirements := Requirements{}
 	var err error
-	if requirements.Env, err = optionalStringList(values, "env"); err != nil {
+	if requirements.Env, err = valuex.OptionalStringList(values, "env"); err != nil {
 		return Requirements{}, err
 	}
-	if requirements.Binaries, err = optionalStringList(values, "binaries"); err != nil {
+	if requirements.Binaries, err = valuex.OptionalStringList(values, "binaries"); err != nil {
 		return Requirements{}, err
 	}
-	if requirements.OS, err = optionalStringList(values, "os"); err != nil {
+	if requirements.OS, err = valuex.OptionalStringList(values, "os"); err != nil {
 		return Requirements{}, err
 	}
 	requirements.Annotations = annotations(values, knownRequirementKeys)
 	return requirements, nil
-}
-
-func requiredString(values map[string]any, key string) (string, error) {
-	value, err := optionalString(values, key)
-	if err != nil {
-		return "", err
-	}
-	if value == "" {
-		return "", fmt.Errorf("%s is required", key)
-	}
-	return value, nil
-}
-
-func optionalString(values map[string]any, key string) (string, error) {
-	raw, ok := values[key]
-	if !ok || raw == nil {
-		return "", nil
-	}
-	value, ok := raw.(string)
-	if !ok {
-		return "", fmt.Errorf("%s must be a string", key)
-	}
-	return strings.TrimSpace(value), nil
-}
-
-func optionalStringList(values map[string]any, key string) ([]string, error) {
-	raw, ok := values[key]
-	if !ok || raw == nil {
-		return nil, nil
-	}
-	items, ok := raw.([]any)
-	if !ok {
-		return nil, fmt.Errorf("%s must be a list", key)
-	}
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		value, ok := item.(string)
-		if !ok {
-			return nil, fmt.Errorf("%s items must be strings", key)
-		}
-		value = strings.TrimSpace(value)
-		if value != "" {
-			out = append(out, value)
-		}
-	}
-	return out, nil
 }
 
 func annotations(values map[string]any, known map[string]struct{}) map[string]any {

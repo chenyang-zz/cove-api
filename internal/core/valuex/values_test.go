@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
+// TestStringConvertsOnlyStringLikeValues 验证 String 只接收字符串和 json.Number。
 func TestStringConvertsOnlyStringLikeValues(t *testing.T) {
-	// 验证点：String 只接收字符串和 json.Number，其他类型返回空字符串，避免误把复杂结构转成展示文本。
 	if got := String("hello"); got != "hello" {
 		t.Fatalf("String(string) = %q, want hello", got)
 	}
@@ -18,8 +18,8 @@ func TestStringConvertsOnlyStringLikeValues(t *testing.T) {
 	}
 }
 
+// TestStringListKeepsOnlyStringItems 验证 StringList 支持 []string 和 []any，并过滤空字符串与非字符串元素。
 func TestStringListKeepsOnlyStringItems(t *testing.T) {
-	// 验证点：StringList 支持 []string 和 []any，并过滤空字符串与非字符串元素。
 	got := StringList([]any{"电脑", 42, "", true, "鼠标"})
 	if len(got) != 2 || got[0] != "电脑" || got[1] != "鼠标" {
 		t.Fatalf("StringList([]any) = %#v, want string items only", got)
@@ -31,8 +31,99 @@ func TestStringListKeepsOnlyStringItems(t *testing.T) {
 	}
 }
 
+// TestRequiredStringReadsTrimmedValue 验证 RequiredString 会读取并裁剪必填字符串。
+func TestRequiredStringReadsTrimmedValue(t *testing.T) {
+	got, err := RequiredString(map[string]any{"name": " skill "}, "name")
+	if err != nil {
+		t.Fatalf("RequiredString() error = %v, want nil", err)
+	}
+	if got != "skill" {
+		t.Fatalf("RequiredString() = %q, want skill", got)
+	}
+}
+
+// TestRequiredStringRejectsMissingOrInvalidValue 验证 RequiredString 会拒绝缺失、空白和错误类型。
+func TestRequiredStringRejectsMissingOrInvalidValue(t *testing.T) {
+	cases := []struct {
+		name   string
+		values map[string]any
+	}{
+		{name: "missing", values: map[string]any{}},
+		{name: "blank", values: map[string]any{"name": " "}},
+		{name: "invalid", values: map[string]any{"name": 1}},
+	}
+
+	for _, tc := range cases {
+		if _, err := RequiredString(tc.values, "name"); err == nil {
+			t.Fatalf("%s: RequiredString() error = nil, want error", tc.name)
+		}
+	}
+}
+
+// TestOptionalStringReadsTrimmedValue 验证 OptionalString 会读取字符串并在缺失时返回空字符串。
+func TestOptionalStringReadsTrimmedValue(t *testing.T) {
+	got, err := OptionalString(map[string]any{"description": " desc "}, "description")
+	if err != nil {
+		t.Fatalf("OptionalString() error = %v, want nil", err)
+	}
+	if got != "desc" {
+		t.Fatalf("OptionalString() = %q, want desc", got)
+	}
+
+	got, err = OptionalString(map[string]any{}, "description")
+	if err != nil {
+		t.Fatalf("OptionalString(missing) error = %v, want nil", err)
+	}
+	if got != "" {
+		t.Fatalf("OptionalString(missing) = %q, want empty", got)
+	}
+}
+
+// TestOptionalStringRejectsInvalidValue 验证 OptionalString 会拒绝非字符串字段。
+func TestOptionalStringRejectsInvalidValue(t *testing.T) {
+	if _, err := OptionalString(map[string]any{"description": 1}, "description"); err == nil {
+		t.Fatalf("OptionalString() error = nil, want error")
+	}
+}
+
+// TestOptionalStringListReadsTrimmedValues 验证 OptionalStringList 会读取字符串列表并过滤空白项。
+func TestOptionalStringListReadsTrimmedValues(t *testing.T) {
+	got, err := OptionalStringList(map[string]any{"tags": []any{" builtin ", " ", "skill"}}, "tags")
+	if err != nil {
+		t.Fatalf("OptionalStringList() error = %v, want nil", err)
+	}
+	if len(got) != 2 || got[0] != "builtin" || got[1] != "skill" {
+		t.Fatalf("OptionalStringList() = %#v, want trimmed non-empty items", got)
+	}
+
+	got, err = OptionalStringList(map[string]any{}, "tags")
+	if err != nil {
+		t.Fatalf("OptionalStringList(missing) error = %v, want nil", err)
+	}
+	if got != nil {
+		t.Fatalf("OptionalStringList(missing) = %#v, want nil", got)
+	}
+}
+
+// TestOptionalStringListRejectsInvalidValue 验证 OptionalStringList 会拒绝非列表字段和非字符串元素。
+func TestOptionalStringListRejectsInvalidValue(t *testing.T) {
+	cases := []struct {
+		name   string
+		values map[string]any
+	}{
+		{name: "not list", values: map[string]any{"tags": "bad"}},
+		{name: "item not string", values: map[string]any{"tags": []any{"ok", 1}}},
+	}
+
+	for _, tc := range cases {
+		if _, err := OptionalStringList(tc.values, "tags"); err == nil {
+			t.Fatalf("%s: OptionalStringList() error = nil, want error", tc.name)
+		}
+	}
+}
+
+// TestFloatConvertsNumericValues 验证 Float 覆盖常见的 float、int 和 json.Number 数值字段。
 func TestFloatConvertsNumericValues(t *testing.T) {
-	// 验证点：Float 覆盖 ES 响应里常见的 float/int/json.Number 分数字段。
 	cases := []struct {
 		name  string
 		value any
@@ -54,8 +145,8 @@ func TestFloatConvertsNumericValues(t *testing.T) {
 	}
 }
 
+// TestTruncateRunesTrimsAndKeepsRuneBoundary 验证 TruncateRunes 按 rune 截断并去掉首尾空白。
 func TestTruncateRunesTrimsAndKeepsRuneBoundary(t *testing.T) {
-	// 验证点：TruncateRunes 按 rune 截断并去掉首尾空白，不追加省略号，适合标签和 prompt 内容裁剪。
 	if got := TruncateRunes("  你好世界  ", 2); got != "你好" {
 		t.Fatalf("TruncateRunes = %q, want 你好", got)
 	}
@@ -67,8 +158,8 @@ func TestTruncateRunesTrimsAndKeepsRuneBoundary(t *testing.T) {
 	}
 }
 
+// TestTruncateRunesWithSuffixAddsSuffixOnlyWhenTruncated 验证 TruncateRunesWithSuffix 只在发生截断时追加后缀。
 func TestTruncateRunesWithSuffixAddsSuffixOnlyWhenTruncated(t *testing.T) {
-	// 验证点：TruncateRunesWithSuffix 只在发生截断时追加后缀，适合展示标题裁剪。
 	if got := TruncateRunesWithSuffix("你好世界", 2, "..."); got != "你好..." {
 		t.Fatalf("TruncateRunesWithSuffix = %q, want 你好...", got)
 	}

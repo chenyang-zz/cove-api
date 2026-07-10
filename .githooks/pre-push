@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+#
+# pre-push hook: 推送前运行与 CI 一致的本地校验，避免流水线失败。
+# 检查项：gofmt / go vet / build / unit test / govulncheck / codegen checks
+#
+# 跳过方式：GIT_PUSH_VERIFY=false git push
+set -euo pipefail
+
+# 仅对 main 分支运行完整校验，其余分支只跑格式与 vet
+FULL_VERIFY=true
+CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
+if [ "$CURRENT_BRANCH" != "main" ]; then
+  FULL_VERIFY=false
+fi
+
+if [ "${GIT_PUSH_VERIFY:-}" = "false" ]; then
+  echo "[pre-push] 跳过校验 (GIT_PUSH_VERIFY=false)"
+  exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "[pre-push] 开始本地 CI 校验..."
+
+echo "  ▸ gofmt 格式检查"
+files=$(gofmt -l .)
+if [ -n "$files" ]; then
+  echo "[pre-push] 以下文件需要 gofmt 格式化："
+  echo "$files"
+  exit 1
+fi
+
+echo "  ▸ go vet"
+go vet ./...
+
+echo "  ▸ go build"
+go build ./...
+
+if [ "$FULL_VERIFY" = true ]; then
+  echo "  ▸ go test (-race)"
+  go test ./... -count=1 -race
+
+  echo "  ▸ govulncheck"
+  go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+fi
+
+echo "  ▸ codegen checks (route / repository / docs / prompt / doctor)"
+go run ./cmd/codegen route --check --format json >/dev/null
+go run ./cmd/codegen repository --list-models --format json >/dev/null
+go run ./cmd/codegen docs --check --format json >/dev/null
+go run ./cmd/codegen prompt --check --format json >/dev/null
+go run ./cmd/codegen doctor --format json >/dev/null
+
+echo "[pre-push] ✅ 校验通过，允许推送。"

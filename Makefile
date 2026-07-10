@@ -1,4 +1,4 @@
-.PHONY: api worker migration gen-route gen-repository gen-docs gen-prompt docs
+.PHONY: api worker migration gen-route gen-repository gen-docs gen-prompt docs install-hooks
 
 api:
 	go run ./cmd/api
@@ -28,3 +28,9 @@ docs:
 	go run ./cmd/codegen repository --list-models --format json
 	go run ./cmd/codegen docs --check --format json
 	go run ./cmd/codegen prompt --check --format json
+
+# install-hooks: 安装 git hooks 到本地 .git/hooks
+install-hooks:
+	cp .githooks/pre-push .git/hooks/pre-push
+	chmod +x .git/hooks/pre-push
+	@echo "git hooks 安装完成。运行 'make install-hooks' 后即可在推送前自动校验。"

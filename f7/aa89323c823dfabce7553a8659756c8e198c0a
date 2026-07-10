@@ -1,0 +1,48 @@
+internal/core/mcp/types.go
+  s_bed6061d2f5706::t_bd11d77ca8fb6d 5,40-62,87-120
+  s_bed6061d2f5706::t_54877936d251d6 121
+internal/core/mcp/sdk_client.go
+  s_bed6061d2f5706::t_ce22094f14583d 102
+  s_bed6061d2f5706::t_64c3ccaf106ede 14,19,24
+  s_bed6061d2f5706::t_2fe6032b68be81 5,26-35,45-46,48-57,61-101,103,117
+internal/core/mcp/doc.go
+  s_bed6061d2f5706::t_bd11d77ca8fb6d 1-2
+internal/core/mcp/opened_tools.go
+  s_bed6061d2f5706::t_bd11d77ca8fb6d 1-78
+internal/core/mcp/service_test.go
+  s_bed6061d2f5706::t_f56535094f5391 33-82,227-336
+  s_bed6061d2f5706::t_64e9848a2516c0 337
+internal/core/mcp/types_test.go
+  s_bed6061d2f5706::t_8b230c4985bef1 1-25
+internal/core/mcp/service.go
+  s_bed6061d2f5706::t_64c3ccaf106ede 27,36,45,81,141
+  s_bed6061d2f5706::t_8b230c4985bef1 8
+  s_bed6061d2f5706::t_bd11d77ca8fb6d 13-26,29-33,38-42,60,62-70,73-77,91-98,104,110-139,167-178
+  s_bed6061d2f5706::t_47fe7beb170459 140
+internal/core/mcp/README.md
+  s_03deb17af8a39e::t_07073e6dbcd7e8 1-168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "f7aa89323c823dfabce7553a8659756c8e198c0a",
+  "prompts": {},
+  "sessions": {
+    "s_03deb17af8a39e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_03deb17af8a39e",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    },
+    "s_bed6061d2f5706": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1817-2478-7702-8e5a-fc4304ca0bc4",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

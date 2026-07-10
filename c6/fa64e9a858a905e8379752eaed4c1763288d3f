@@ -1,0 +1,21 @@
+.github/workflows/cd.yml
+  s_2f88aa99e66cbf::t_1f26358f268024 96,101-103,106
+Dockerfile
+  s_2f88aa99e66cbf::t_cfd40e1b8c197c 7,29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "c6fa64e9a858a905e8379752eaed4c1763288d3f",
+  "prompts": {},
+  "sessions": {
+    "s_2f88aa99e66cbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_2f88aa99e66cbf",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

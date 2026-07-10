@@ -1,0 +1,63 @@
+internal/infrastructure/llm/openai.go
+  s_bed6061d2f5706::t_8feeecfa20a6cc 144-175,184,187,191-194,196-208,212-230,235-248
+  s_bed6061d2f5706::t_bdadcca20b167a 249
+internal/core/llm/stream.go
+  s_bed6061d2f5706::t_ce1673b7b52b33 1-44
+internal/infrastructure/llm/anthropic.go
+  s_bed6061d2f5706::t_8feeecfa20a6cc 153-184,193,196,198-202,207-235,239-243,248-252
+  s_bed6061d2f5706::t_2abdccb25bfb99 203-206
+  s_bed6061d2f5706::t_aa54ab73b1787f 253
+internal/domain/flow/message.go
+  s_bed6061d2f5706::t_52cf4c10fe7f95 27
+internal/logic/chat/chat_stream.go
+  s_bed6061d2f5706::t_52cf4c10fe7f95 167,184,221-224
+internal/core/agent/base_test.go
+  s_bed6061d2f5706::t_c28125636b69c5 50-54
+internal/domain/flow/chat/orchestrator_test.go
+  s_bed6061d2f5706::t_550284471708df 50-51,53-57,59,61-62,404,456-457,488-489,524-525,841-844,846-848
+  s_bed6061d2f5706::t_c28125636b69c5 839-840,845,849-853
+  s_bed6061d2f5706::t_3aa78fae127032 420-425,427
+internal/infrastructure/llm/openai_test.go
+  s_bed6061d2f5706::t_2abdccb25bfb99 342-377
+internal/core/agent/react/types.go
+  s_bed6061d2f5706::t_724fcca7604b34 24-26
+internal/core/agent/hooks.go
+  s_bed6061d2f5706::t_ce1673b7b52b33 36-38
+internal/infrastructure/llm/anthropic_test.go
+  s_bed6061d2f5706::t_2abdccb25bfb99 312-346
+internal/core/agent/react/agent.go
+  s_bed6061d2f5706::t_724fcca7604b34 179-187
+internal/core/agent/types.go
+  s_bed6061d2f5706::t_ce1673b7b52b33 103
+internal/domain/flow/chat/orchestrator.go
+  s_bed6061d2f5706::t_a3adf940341815 335
+  s_bed6061d2f5706::t_52cf4c10fe7f95 118,333-334,336,338-346
+  s_bed6061d2f5706::t_e712f826abbbcb 329-330
+internal/core/agent/react/react_test.go
+  s_bed6061d2f5706::t_1f649f755a928b 163-190,350-376,490-493,522-531
+  s_bed6061d2f5706::t_c28125636b69c5 521,532-542,573-590,620-621,623
+  s_bed6061d2f5706::t_71c0cc254a904f 622
+  s_bed6061d2f5706::t_b61ddc5f48c05c 624
+internal/core/agent/react/planner.go
+  s_bed6061d2f5706::t_ac833a8df9d927 97,110-111,115-120,190,209-215,217
+  s_bed6061d2f5706::t_724fcca7604b34 24-29,69-73,87-91,93-96,98-109,112,114,121,123,127,167-171,175-178,185,187-189,191-208,216,269-273,278,283,286,290-332,434-436
+internal/logic/chat/chat_stream_test.go
+  s_bed6061d2f5706::t_c28125636b69c5 334-335,340,344-348
+  s_bed6061d2f5706::t_550284471708df 98,336-339,341-343
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "6a6843e581729504647cfe779b162f2ed3489365",
+  "prompts": {},
+  "sessions": {
+    "s_bed6061d2f5706": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1817-2478-7702-8e5a-fc4304ca0bc4",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

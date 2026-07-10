@@ -1,0 +1,19 @@
+docs/mcp-tool-flow.md
+  s_d2a6509e1369de::t_1556928abf8fe9 1-408
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "2a721c912335725935efd72a6ead35081f8a02ae",
+  "prompts": {},
+  "sessions": {
+    "s_d2a6509e1369de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_d2a6509e1369de",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

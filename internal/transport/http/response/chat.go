@@ -24,6 +24,16 @@ type MetaEvent struct {
 	Title          string    `json:"title"`
 }
 
+type ToolEvent struct {
+	BaseEvent
+	Tool        string         `json:"tool"`
+	Input       map[string]any `json:"input,omitempty"`
+	Observation string         `json:"observation,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	Iteration   int            `json:"iteration"`
+	ToolCallID  string         `json:"tool_call_id"`
+}
+
 func (e *BaseEvent) EventName() string {
 	return e.Type
 }

@@ -41,6 +41,16 @@ func EventToResponse(event types.Event) response.SSEEvent {
 		}
 	case *types.BaseEvent:
 		return BaseEventToResponse(e)
+	case *types.ToolEvent:
+		return &response.ToolEvent{
+			BaseEvent:   response.BaseEvent{Type: e.Type},
+			Tool:        e.Tool,
+			Input:       e.Input,
+			Observation: e.Observation,
+			Error:       e.Error,
+			Iteration:   e.Iteration,
+			ToolCallID:  e.ToolCallID,
+		}
 	default:
 		return &response.BaseEvent{Type: event.EventName()}
 	}

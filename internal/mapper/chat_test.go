@@ -71,6 +71,38 @@ func TestEventStreamToResponseMapsAndCloses(t *testing.T) {
 	}
 }
 
+// 验证 tool_call 事件的所有字段正确映射到 response.ToolEvent
+func TestEventToResponseMapsToolCallEvent(t *testing.T) {
+	input := map[string]any{"query": "search term"}
+	got := mapper.EventToResponse(types.NewToolCallEvent("search", input, 1, "call_abc123"))
+
+	event, ok := got.(*response.ToolEvent)
+	if !ok {
+		t.Fatalf("EventToResponse type = %T, want *response.ToolEvent", got)
+	}
+	if event.Type != types.EventTypeToolCall || event.Tool != "search" ||
+		event.ToolCallID != "call_abc123" || event.Iteration != 1 ||
+		event.Input["query"] != "search term" {
+		t.Fatalf("event = %+v, want tool_call payload", event)
+	}
+}
+
+// 验证 tool_result 事件的所有字段正确映射到 response.ToolEvent
+func TestEventToResponseMapsToolResultEvent(t *testing.T) {
+	input := map[string]any{"query": "search term"}
+	got := mapper.EventToResponse(types.NewToolResultEvent("search", input, "found 3 results", "", 1, "call_abc123"))
+
+	event, ok := got.(*response.ToolEvent)
+	if !ok {
+		t.Fatalf("EventToResponse type = %T, want *response.ToolEvent", got)
+	}
+	if event.Type != types.EventTypeToolResult || event.Tool != "search" ||
+		event.ToolCallID != "call_abc123" || event.Iteration != 1 ||
+		event.Observation != "found 3 results" || event.Error != "" {
+		t.Fatalf("event = %+v, want tool_result payload", event)
+	}
+}
+
 func TestEventStreamToResponseMapsPingToComment(t *testing.T) {
 	events := make(chan types.Event, 1)
 	events <- types.NewPingEvent()

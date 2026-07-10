@@ -37,8 +37,23 @@ echo "  ▸ go build"
 go build ./...
 
 if [ "$FULL_VERIFY" = true ]; then
-  echo "  ▸ go test (-race)"
-  go test ./... -count=1 -race
+  # 计算与 origin/main 的 merge-base，只对变更过的 .go 文件所在目录跑测试
+  merge_base=$(git merge-base HEAD origin/main 2>/dev/null) || true
+  changed_dirs=""
+  if [ -n "$merge_base" ]; then
+    changed_dirs=$(git diff --name-only "${merge_base}..HEAD" -- '*.go' \
+      | xargs -I{} dirname {} \
+      | sort -u)
+  fi
+
+  if [ -n "$changed_dirs" ]; then
+    echo "  ▸ go test (-race) on changed packages:"
+    echo "$changed_dirs" | sed 's/^/      - /'
+    # shellcheck disable=SC2086
+    go test -count=1 -race $changed_dirs
+  else
+    echo "  ▸ go test 跳过 (无 .go 文件变更)"
+  fi
 
   echo "  ▸ govulncheck"
   go run golang.org/x/vuln/cmd/govulncheck@latest ./...

@@ -1,0 +1,19 @@
+Dockerfile
+  s_f2528d97ca25c6::t_819bdbd55b47a3 7,29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "9b1e3510e0a2ff4388a7835eccea8e7709898211",
+  "prompts": {},
+  "sessions": {
+    "s_f2528d97ca25c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_f2528d97ca25c6",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

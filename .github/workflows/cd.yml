@@ -17,7 +17,6 @@ permissions:
   id-token: write
 
 env:
-  REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -29,15 +28,14 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   # ------------------------------------------------------------------ #
-  # 阶段 2: 构建并推送 Docker 镜像到 GHCR
+  # 阶段 2: 构建镜像并通过 tarball artifact 传递
   # ------------------------------------------------------------------ #
   build-and-push:
-    name: Build & Push Image
+    name: Build Image
     needs: ci-gate
     runs-on: ubuntu-latest
     outputs:
       image-tag: ${{ steps.meta.outputs.version }}
-      image-uri: ${{ steps.meta.outputs.tags }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +43,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -53,28 +51,30 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
+      - name: Build image
+        run: |
+          docker buildx build \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            --load \
+            -t cove-api:${{ steps.meta.outputs.version }} \
+            .
+
+      - name: Save image as tarball
+        run: docker save cove-api:${{ steps.meta.outputs.version }} | gzip > /tmp/cove-api.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
         with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          name: docker-image
+          path: /tmp/cove-api.tar.gz
+          retention-days: 1
 
   # ------------------------------------------------------------------ #
-  # 阶段 3: 触发服务器自动部署
+  # 阶段 3: SCP 传输镜像到服务器并部署
   # ------------------------------------------------------------------ #
   deploy:
     name: Deploy to Server
@@ -83,6 +83,22 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: .
+
+      - name: SCP image to server
+        uses: appleboy/scp-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          source: "cove-api.tar.gz"
+          target: "/tmp/cove-api.tar.gz"
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
@@ -93,20 +109,18 @@ jobs:
           port: ${{ secrets.DEPLOY_PORT || 22 }}
           script: |
             set -e
-            echo "🚀 开始部署镜像: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"
+            echo "🚀 开始部署镜像: cove-api:${{ needs.build-and-push.outputs.image-tag }}"
 
-            # 登录 GHCR
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
-
-            # 从 GHCR 拉取镜像并 tag 为 compose 中引用的本地名
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}
-            docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }} cove-api:latest
+            # 加载镜像并 tag 为 compose 引用的本地名
+            docker load -i /tmp/cove-api.tar.gz
+            docker tag cove-api:${{ needs.build-and-push.outputs.image-tag }} cove-api:latest
 
             # 滚动更新 api 容器
             cd ${{ secrets.DEPLOY_COMPOSE_DIR || '/opt/cove' }}
             docker compose -f deployments/docker-compose.yml up -d --no-deps api
 
-            # 清理悬空镜像
+            # 清理临时文件和悬空镜像
+            rm -f /tmp/cove-api.tar.gz
             docker image prune -f
 
             echo "✅ 部署完成"

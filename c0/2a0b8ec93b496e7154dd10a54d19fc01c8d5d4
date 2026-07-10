@@ -1,0 +1,67 @@
+internal/logic/toolconfig/helper.go
+  s_bed6061d2f5706::t_c5e697ed0a30df 5-7,10,13,15,20-24,45-113,115,118,120-156,161-163,165,168,177-185,188-193,198-209
+  s_bed6061d2f5706::t_b3a436a31515af 8
+  s_bed6061d2f5706::t_5080019d8ef2dc 14,39,114,116-117,119,157,169-176,186,194
+  s_bed6061d2f5706::t_d9fd0d40959e24 44
+  s_bed6061d2f5706::t_75547ed0e5f605 158-160
+  s_bed6061d2f5706::t_168698c4bd25fd 197
+internal/domain/tools/mcp/doc.go
+  s_bed6061d2f5706::t_4077f2f8d7681b 1-2
+internal/domain/tools/mcp/tool.go
+  s_bed6061d2f5706::t_4077f2f8d7681b 1-150
+internal/transport/http/router_test.go
+  s_bed6061d2f5706::t_6cc4fa7f52d953 1561,1564-1565,1571-1572,1593,1596,1602-1603
+  s_bed6061d2f5706::t_40b8896593c347 20,119,136,255-322,1605
+  s_bed6061d2f5706::t_64c3ccaf106ede 1604,1607-1654
+  s_bed6061d2f5706::t_0b676199de4339 323
+  s_bed6061d2f5706::t_7fa33141c4439d 1606
+internal/domain/tools/mcp/types.go
+  s_bed6061d2f5706::t_4077f2f8d7681b 1-31
+internal/transport/http/response/toolconfig.go
+  s_bed6061d2f5706::t_ceb6a37b6b69b5 9-33
+internal/logic/mcpserver/mcpserver_test.go
+  s_bed6061d2f5706::t_64c3ccaf106ede 687-714,805-813
+  s_bed6061d2f5706::t_31780691d4386f 814
+internal/logic/toolconfig/list_tool_configs.go
+  s_bed6061d2f5706::t_5080019d8ef2dc 7,51-54
+  s_bed6061d2f5706::t_c5e697ed0a30df 31-32,36,40-42,44-46
+internal/mapper/toolconfig.go
+  s_bed6061d2f5706::t_5080019d8ef2dc 1-94
+internal/logic/toolconfig/toggle_tool.go
+  s_bed6061d2f5706::t_f0499e65dee49d 8,41,55,80-105
+  s_bed6061d2f5706::t_35fa218e7efe29 106-107
+internal/domain/tools/mcp/mcp_test.go
+  s_bed6061d2f5706::t_bb87b8d71d5cc6 1-128
+internal/transport/http/routes/toolconfig.go
+  s_bed6061d2f5706::t_d77acb2bb60bc9 19
+internal/logic/mcpserver/sync_mcp_server.go
+  s_bed6061d2f5706::t_5ca13df3877af0 50
+internal/domain/tools/mcp/key.go
+  s_bed6061d2f5706::t_4077f2f8d7681b 1-75
+internal/logic/toolconfig/toolconfig_test.go
+  s_bed6061d2f5706::t_563f243ecdd96c 10,59-106,124-142,207-228
+  s_bed6061d2f5706::t_8a512069384990 243-244
+  s_bed6061d2f5706::t_19bb2e6144ed37 9,22,28-29,31,35,48,54-57,149,171,192,229-230,241-242,245-311
+  s_bed6061d2f5706::t_a30d64b7f09eab 107-123
+  s_bed6061d2f5706::t_cda63c153db4fa 58,231,312
+internal/domain/tools/mcp/config.go
+  s_bed6061d2f5706::t_4077f2f8d7681b 1-54
+internal/mapper/toolconfig_test.go
+  s_bed6061d2f5706::t_5080019d8ef2dc 1-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "c02a0b8ec93b496e7154dd10a54d19fc01c8d5d4",
+  "prompts": {},
+  "sessions": {
+    "s_bed6061d2f5706": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1817-2478-7702-8e5a-fc4304ca0bc4",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

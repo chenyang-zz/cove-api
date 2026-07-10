@@ -230,11 +230,12 @@ tasks:
       - go.sum
     generates:
       - build/ios/xcode/main/main.m
+      - build/ios/xcode/main/LaunchScreen.storyboard
       - build/ios/xcode/main/Assets.xcassets/**/*
       - build/ios/xcode/project.pbxproj
     cmds:
       - wails3 ios xcode:gen -outdir build/ios/xcode -config build/config.yml
-      - go run build/ios/scripts/patch_xcode_project/main.go -project build/ios/xcode/main.xcodeproj/project.pbxproj -plist build/ios/xcode/main/Info.plist
+      - go run build/ios/scripts/patch_xcode_project/main.go -project build/ios/xcode/main.xcodeproj/project.pbxproj -plist build/ios/xcode/main/Info.plist -launch-storyboard build/ios/xcode/main/LaunchScreen.storyboard -asset-catalog build/ios/xcode/main/Assets.xcassets
 
   run:
     summary: Run the application in iOS Simulator

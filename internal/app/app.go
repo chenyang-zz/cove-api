@@ -46,7 +46,7 @@ func New(assets embed.FS) *application.App {
 			Backdrop:                application.MacBackdropTranslucent,
 			TitleBar:                application.MacTitleBarHiddenInset,
 		},
-		BackgroundColour: application.NewRGB(237, 243, 240),
+		BackgroundColour: application.NewRGB(241, 248, 248),
 		URL:              windowURL,
 	})
 

@@ -29,6 +29,20 @@ afterEach(() => {
 })
 
 describe('AuthScreen', () => {
+  it('moves the tab indicator when switching authentication modes', async () => {
+    const user = userEvent.setup()
+    render(<AuthScreen onAuthenticated={vi.fn()} />)
+
+    const tablist = screen.getByRole('tablist')
+    expect(tablist.classList.contains('auth-tabs--register')).toBe(false)
+    expect(tablist.querySelector('.auth-tabs__indicator')).toBeTruthy()
+
+    await user.click(screen.getByRole('tab', { name: '注册' }))
+
+    expect(tablist.classList.contains('auth-tabs--register')).toBe(true)
+    expect(screen.getByRole('tab', { name: '注册' }).getAttribute('aria-selected')).toBe('true')
+  })
+
   it('shows inline validation and focuses the first invalid registration field', async () => {
     const user = userEvent.setup()
     render(<AuthScreen onAuthenticated={vi.fn()} />)

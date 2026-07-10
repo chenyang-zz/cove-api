@@ -17,6 +17,7 @@ import (
 
 	"github.com/boxify/api-go/internal/config"
 	corellm "github.com/boxify/api-go/internal/core/llm"
+	coremcp "github.com/boxify/api-go/internal/core/mcp"
 	"github.com/boxify/api-go/internal/core/prompt"
 	ragchunker "github.com/boxify/api-go/internal/core/rag/chunker"
 	ragsearch "github.com/boxify/api-go/internal/core/rag/search"
@@ -115,6 +116,7 @@ func newTestRouterWithConfigAndOverrides(t *testing.T, cfg config.Config, config
 		ConversationRepo:  newTestConversationRepository(),
 		MessageRepo:       newTestMessageRepository(),
 		KnowledgeBaseRepo: newTestKnowledgeBaseRepository(),
+		MCPServerRepo:     newTestMCPServerRepository(),
 		SkillRepo:         newTestSkillRepository(),
 		ToolConfigRepo:    newTestToolConfigRepository(),
 		DocumentRepo:      newTestDocumentRepository(),
@@ -131,6 +133,7 @@ func newTestRouterWithConfigAndOverrides(t *testing.T, cfg config.Config, config
 		LLMManager:        llmManager,
 		PromptManager:     promptManager,
 		PromptClient:      promptsgen.NewClient(promptManager),
+		MCPToolService:    coremcp.NewService(coremcp.Options{Client: &testMCPToolClient{}}),
 		SecretCipher:      cipher,
 		TokenIssuer:       security.NewTokenIssuer("test-secret", time.Hour),
 	}
@@ -247,6 +250,75 @@ func (testWebCrawlerGuard) Validate(ctx context.Context, rawURL string) error {
 
 type testToolConfigRepository struct {
 	rows []*models.ToolConfig
+}
+
+type testMCPToolClient struct {
+	tools []coremcp.ToolInfo
+	err   error
+}
+
+func (c *testMCPToolClient) ListTools(_ context.Context, _ coremcp.ServerConfig) ([]coremcp.ToolInfo, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	return append([]coremcp.ToolInfo(nil), c.tools...), nil
+}
+
+type testMCPServerRepository struct {
+	rows []*models.MCPServer
+}
+
+func newTestMCPServerRepository() *testMCPServerRepository {
+	return &testMCPServerRepository{}
+}
+
+func (r *testMCPServerRepository) Create(_ context.Context, userID uuid.UUID, row *models.MCPServer) (*models.MCPServer, error) {
+	if row.ID == uuid.Nil {
+		row.ID = uuid.New()
+	}
+	row.UserID = userID
+	r.rows = append(r.rows, row)
+	return row, nil
+}
+
+func (r *testMCPServerRepository) List(_ context.Context, userID uuid.UUID) ([]*models.MCPServer, error) {
+	out := make([]*models.MCPServer, 0, len(r.rows))
+	for _, row := range r.rows {
+		if row != nil && row.UserID == userID {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
+func (r *testMCPServerRepository) FindByID(_ context.Context, userID uuid.UUID, id uuid.UUID) (*models.MCPServer, error) {
+	for _, row := range r.rows {
+		if row != nil && row.UserID == userID && row.ID == id {
+			return row, nil
+		}
+	}
+	return nil, xerr.NotFound("MCP服务不存在")
+}
+
+func (r *testMCPServerRepository) Update(_ context.Context, _ uuid.UUID, row *models.MCPServer) (*models.MCPServer, error) {
+	return row, nil
+}
+
+func (r *testMCPServerRepository) UpdateFields(_ context.Context, _ uuid.UUID, _ uuid.UUID, row *models.MCPServer, _ *repository.MCPServerUpdateFields) (*models.MCPServer, error) {
+	return row, nil
+}
+
+func (r *testMCPServerRepository) Delete(_ context.Context, _ uuid.UUID, _ uuid.UUID) error {
+	return nil
+}
+
+func (r *testMCPServerRepository) FindByName(_ context.Context, userID uuid.UUID, name string) (*models.MCPServer, error) {
+	for _, row := range r.rows {
+		if row != nil && row.UserID == userID && row.Name == name {
+			return row, nil
+		}
+	}
+	return nil, xerr.NotFound("MCP服务不存在")
 }
 
 func newTestToolConfigRepository() *testToolConfigRepository {
@@ -1486,17 +1558,18 @@ func TestToolConfigRoutesListBuiltinToolsAndToggleFalse(t *testing.T) {
 	}
 	var initial struct {
 		Data struct {
-			List []struct {
+			BuiltinTools []struct {
 				ToolKey string `json:"tool_key"`
 				Enabled bool   `json:"enabled"`
-			} `json:"list"`
+			} `json:"builtin_tools"`
+			MCPServers []any `json:"mcp_servers"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(list.Body.Bytes(), &initial); err != nil {
 		t.Fatalf("unmarshal initial list body: %v", err)
 	}
-	if len(initial.Data.List) != 2 || !initial.Data.List[0].Enabled || !initial.Data.List[1].Enabled {
-		t.Fatalf("initial tools = %+v, want two default-enabled builtin tools", initial.Data.List)
+	if len(initial.Data.BuiltinTools) != 2 || !initial.Data.BuiltinTools[0].Enabled || !initial.Data.BuiltinTools[1].Enabled || len(initial.Data.MCPServers) != 0 {
+		t.Fatalf("initial data = %+v, want two default-enabled builtin tools and no MCP groups", initial.Data)
 	}
 
 	toggle := httptest.NewRecorder()
@@ -1517,17 +1590,68 @@ func TestToolConfigRoutesListBuiltinToolsAndToggleFalse(t *testing.T) {
 	}
 	var afterBody struct {
 		Data struct {
-			List []struct {
+			BuiltinTools []struct {
 				ToolKey string `json:"tool_key"`
 				Enabled bool   `json:"enabled"`
-			} `json:"list"`
+			} `json:"builtin_tools"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(after.Body.Bytes(), &afterBody); err != nil {
 		t.Fatalf("unmarshal after list body: %v", err)
 	}
-	if len(afterBody.Data.List) != 2 || afterBody.Data.List[0].ToolKey != "current_time" || afterBody.Data.List[0].Enabled {
-		t.Fatalf("after tools = %+v, want current_time disabled", afterBody.Data.List)
+	if len(afterBody.Data.BuiltinTools) != 2 || afterBody.Data.BuiltinTools[0].ToolKey != "current_time" || afterBody.Data.BuiltinTools[0].Enabled {
+		t.Fatalf("after tools = %+v, want current_time disabled", afterBody.Data.BuiltinTools)
+	}
+}
+
+// TestToolConfigRouteGroupsMCPToolsByServer 验证工具配置 HTTP 响应按 MCP server 分组并返回运行时缓存状态。
+func TestToolConfigRouteGroupsMCPToolsByServer(t *testing.T) {
+	userID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	serverID := uuid.New()
+	router := newTestRouterWithConfigAndOverrides(t, config.Config{}, func(svcCtx *svc.ServiceContext) {
+		svcCtx.MCPServerRepo.(*testMCPServerRepository).rows = []*models.MCPServer{{
+			ID: serverID, UserID: userID, Name: "团队搜索", Enabled: true, Status: "ready",
+		}}
+		svcCtx.MCPToolService = coremcp.NewService(coremcp.Options{Client: &testMCPToolClient{tools: []coremcp.ToolInfo{{
+			Name: "search", Title: "网页搜索", Description: "搜索网页",
+		}}}})
+	})
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/tool-config/", nil)
+	req.Header.Set("Authorization", "Bearer dev-token")
+	router.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("list status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var body struct {
+		Data struct {
+			MCPServers []struct {
+				ServerID       uuid.UUID  `json:"server_id"`
+				ServerName     string     `json:"server_name"`
+				CacheState     string     `json:"cache_state"`
+				CacheExpiresAt *time.Time `json:"cache_expires_at"`
+				Tools          []struct {
+					ToolKey  string `json:"tool_key"`
+					Name     string `json:"name"`
+					ToolType string `json:"tool_type"`
+					Enabled  bool   `json:"enabled"`
+				} `json:"tools"`
+			} `json:"mcp_servers"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal list body: %v", err)
+	}
+	if len(body.Data.MCPServers) != 1 {
+		t.Fatalf("MCP groups = %d, want 1", len(body.Data.MCPServers))
+	}
+	group := body.Data.MCPServers[0]
+	if group.ServerID != serverID || group.ServerName != "团队搜索" || group.CacheState != "fresh" || group.CacheExpiresAt == nil {
+		t.Fatalf("MCP group = %+v, want fresh 团队搜索 group", group)
+	}
+	if len(group.Tools) != 1 || group.Tools[0].Name != "网页搜索" || group.Tools[0].ToolType != "mcp" || !group.Tools[0].Enabled || !strings.HasPrefix(group.Tools[0].ToolKey, "mcp_") {
+		t.Fatalf("MCP tools = %+v, want default-enabled grouped tool", group.Tools)
 	}
 }
 

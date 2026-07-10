@@ -684,6 +684,34 @@ func TestSyncMCPServerUpdatesToolsAndClearsLastError(t *testing.T) {
 	}
 }
 
+// TestSyncMCPServerBypassesRuntimeTTL 验证显式同步即使已有有效运行时缓存也会重新访问远端。
+func TestSyncMCPServerBypassesRuntimeTTL(t *testing.T) {
+	userID := uuid.New()
+	server := &models.MCPServer{
+		ID: uuid.New(), UserID: userID, Name: "sync", Transport: string(request.StreamableHTTP),
+		Url: "https://example.com/mcp", AuthType: string(request.None), AuthConfig: models.MCPAuthConfig{}, UpdatedAt: time.Now(),
+	}
+	repo := newFakeMCPServerRepository(server)
+	client := &countingSyncMCPToolClient{tools: []coremcp.ToolInfo{{Name: "cached"}}}
+	service := coremcp.NewService(coremcp.Options{Client: client})
+	coreServer := coremcp.ServerConfig{ID: server.ID, Transport: server.Transport, URL: server.Url, AuthType: server.AuthType, UpdatedAt: server.UpdatedAt}
+	if _, err := service.BuildToolList(context.Background(), coreServer); err != nil {
+		t.Fatalf("BuildToolList error = %v, want nil", err)
+	}
+	client.tools = []coremcp.ToolInfo{{Name: "fresh"}}
+
+	logic := NewSyncMCPServerLogic(context.Background(), &svc.ServiceContext{
+		MCPServerRepo: repo, SecretCipher: newTestCipher(t), MCPToolService: service,
+	})
+	out, err := logic.SyncMCPServer(userID, &request.UriMCPServerIDRequest{ID: server.ID.String()})
+	if err != nil {
+		t.Fatalf("SyncMCPServer error = %v, want nil", err)
+	}
+	if client.calls != 2 || len(out.ToolsCache) != 1 || out.ToolsCache[0].Name != "fresh" {
+		t.Fatalf("remote calls/tools = %d/%#v, want 2/fresh", client.calls, out.ToolsCache)
+	}
+}
+
 func TestSyncMCPServerPassesDecryptedAPIKeyQueryConfig(t *testing.T) {
 	// 验证同步前会解密 API key，并把 query placement 配置传给 core service。
 	userID := uuid.New()
@@ -772,6 +800,16 @@ type recordingMCPToolClient struct {
 	tools      []coremcp.ToolInfo
 	err        error
 	lastServer coremcp.ServerConfig
+}
+
+type countingSyncMCPToolClient struct {
+	tools []coremcp.ToolInfo
+	calls int
+}
+
+func (c *countingSyncMCPToolClient) ListTools(context.Context, coremcp.ServerConfig) ([]coremcp.ToolInfo, error) {
+	c.calls++
+	return append([]coremcp.ToolInfo(nil), c.tools...), nil
 }
 
 func (c *recordingMCPToolClient) ListTools(ctx context.Context, server coremcp.ServerConfig) ([]coremcp.ToolInfo, error) {

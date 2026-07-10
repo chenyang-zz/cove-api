@@ -16,7 +16,7 @@ func RegisterToolConfigRoutes(api *gin.RouterGroup, toolConfig handler.ToolConfi
 
 	// @auth(user_id)
 	// @description 查询工具配置列表
-	// @output response.ListResponse[*response.ToolConfigResponse]
+	// @output response.ToolConfigListResponse
 	toolConfigRoutes.GET("/", toolConfig.ListToolConfigs)
 	toolConfigRoutes.GET("/list", toolConfig.ListToolConfigs)
 

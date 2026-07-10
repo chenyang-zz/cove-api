@@ -47,7 +47,7 @@ func (l *SyncMCPServerLogic) SyncMCPServer(userID uuid.UUID, input *request.UriM
 		return nil, err
 	}
 
-	tools, err := l.svcCtx.MCPToolService.BuildToolList(l.ctx, mapper.MCPServerToCoreServerConfig(row, authConfig))
+	tools, err := l.svcCtx.MCPToolService.RefreshToolList(l.ctx, mapper.MCPServerToCoreServerConfig(row, authConfig))
 	if err != nil {
 		lastError := err.Error()
 		patch := &models.MCPServer{

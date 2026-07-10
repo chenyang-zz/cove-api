@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
+	domaintoolmcp "github.com/boxify/api-go/internal/domain/tools/mcp"
 	"github.com/boxify/api-go/internal/models"
 	"github.com/boxify/api-go/internal/observability/xlog"
 	"github.com/boxify/api-go/internal/repository"
@@ -37,12 +38,9 @@ func (l *ToggleToolLogic) ToggleTool(userID uuid.UUID, input *request.ToggleTool
 		return xerr.BadRequest("工具开关不能为空")
 	}
 	toolKey := strings.TrimSpace(input.ToolKey)
-	items, err := builtinToolResponses(l.ctx, l.svcCtx)
+	toolType, err := l.resolveToolType(userID, toolKey)
 	if err != nil {
 		return err
-	}
-	if !containsBuiltinTool(items, toolKey) {
-		return xerr.NotFound("工具不存在")
 	}
 
 	rows, err := l.svcCtx.ToolConfigRepo.List(l.ctx, userID)
@@ -54,7 +52,7 @@ func (l *ToggleToolLogic) ToggleTool(userID uuid.UUID, input *request.ToggleTool
 		_, err = l.svcCtx.ToolConfigRepo.Create(l.ctx, userID, &models.ToolConfig{
 			ID:       uuid.New(),
 			ToolKey:  toolKey,
-			ToolType: builtinToolType,
+			ToolType: toolType,
 			Enabled:  *input.Enabled,
 			Config:   models.JSONMap{},
 		})
@@ -77,6 +75,34 @@ func (l *ToggleToolLogic) ToggleTool(userID uuid.UUID, input *request.ToggleTool
 		slog.Bool("enabled", *input.Enabled),
 	)
 	return nil
+}
+
+func (l *ToggleToolLogic) resolveToolType(userID uuid.UUID, toolKey string) (string, error) {
+	if serverID, ok := domaintoolmcp.ParseToolKey(toolKey); ok {
+		server, err := l.svcCtx.MCPServerRepo.FindByID(l.ctx, userID, serverID)
+		if err != nil {
+			return "", err
+		}
+		definitions, err := availableMCPDefinitions(l.ctx, l.svcCtx, server)
+		if err != nil {
+			return "", err
+		}
+		for _, definition := range definitions {
+			if definition != nil && definition.Key == toolKey {
+				return mcpToolType, nil
+			}
+		}
+		return "", xerr.NotFound("工具不存在")
+	}
+
+	items, err := builtinToolResponses(l.ctx, l.svcCtx)
+	if err != nil {
+		return "", err
+	}
+	if !containsBuiltinTool(items, toolKey) {
+		return "", xerr.NotFound("工具不存在")
+	}
+	return builtinToolType, nil
 }
 
 // containsBuiltinTool 检查工具列表中是否包含指定的内置工具

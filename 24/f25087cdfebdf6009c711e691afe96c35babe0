@@ -1,0 +1,31 @@
+go.mod
+  s_c209f82ca2fad5::t_09d14021cf0c6e 3
+.dockerignore
+  s_c209f82ca2fad5::t_794ab23c1e0ded 1-32
+.github/workflows/ci.yml
+  s_c209f82ca2fad5::t_bae6d4c722db77 22,52,73,94,115
+.github/workflows/cd.yml
+  s_c209f82ca2fad5::t_5a13fb42295e09 1-112
+Dockerfile
+  s_c209f82ca2fad5::t_8295e0ab2763df 1-46
+deployments/docker-compose.yml
+  s_c209f82ca2fad5::t_64e32386dcd43d 41-62
+Makefile
+  s_c209f82ca2fad5::t_71305bb1748b7f 32,34-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "24f25087cdfebdf6009c711e691afe96c35babe0",
+  "prompts": {},
+  "sessions": {
+    "s_c209f82ca2fad5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_c209f82ca2fad5",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

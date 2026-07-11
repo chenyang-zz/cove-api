@@ -1,0 +1,37 @@
+docs/openapi.json
+  s_08f2cfec058a3e::t_2d7c5368fa34b2 1591,1593-1610,1627-1635
+internal/logic/chat/chat_stream_test.go
+  s_08f2cfec058a3e::t_b722c9399a8e96 530-533
+internal/logic/conversation/conversation_test.go
+  s_08f2cfec058a3e::t_63a9e80300768b 55-72,131,141-143,150-152,158-178
+internal/logic/conversation/list_conversations.go
+  s_08f2cfec058a3e::t_a46170d279fa02 9,11,13,31-42,46-53
+internal/repository/conversation.go
+  s_08f2cfec058a3e::t_5f9e6a3f873fe6 19-20,27-31
+internal/repository/postgres/conversation.go
+  s_08f2cfec058a3e::t_a6319d292a58f7 50-72
+internal/transport/http/handler/conversation.go
+  s_08f2cfec058a3e::t_d8782809692107 41-45,51
+internal/transport/http/request/conversation.go
+  s_08f2cfec058a3e::t_a9a530341442dd 13-17
+internal/transport/http/router_test.go
+  s_08f2cfec058a3e::t_b891f2f29710f8 472-488
+internal/transport/http/routes/conversation.go
+  s_08f2cfec058a3e::t_68fd69f8df08f1 18-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "0aecb63211fd33a0a2c634d7c381113e7aed44d4",
+  "prompts": {},
+  "sessions": {
+    "s_08f2cfec058a3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_08f2cfec058a3e",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

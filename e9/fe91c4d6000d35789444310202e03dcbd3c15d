@@ -1,0 +1,19 @@
+.github/workflows/cd.yml
+  s_25c85e34faf67e::t_f5c22bac96cba2 80-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "e9fe91c4d6000d35789444310202e03dcbd3c15d",
+  "prompts": {},
+  "sessions": {
+    "s_25c85e34faf67e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d27-9ecb-7661-b833-cae45e885091",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

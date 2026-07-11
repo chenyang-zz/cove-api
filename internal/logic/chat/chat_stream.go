@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"maps"
 	"strings"
 
 	"log/slog"
@@ -163,17 +164,19 @@ func (l *ChatStreamLogic) runChatTurnBG(
 	}
 
 	var assistantMessageID string
-	toolCalls := []models.MessageToolCallMeta{}
+	parts := make([]models.MessagePart, 0, 8)
 	sentToken := false
 	for message := range messageCh {
 		switch msg := message.(type) {
 		case *flow.AssistantMessage:
 			answer := strings.TrimSpace(msg.Answer)
+			// 用最终 answer 对齐 parts 正文，content 仍以 answer 为真源
+			parts = finalizePartsWithAnswer(parts, answer)
 			assistantMsg, saveErr := l.svcCtx.MessageRepo.Create(ctx, userID, &models.Message{
 				ConversationID: conversationID,
 				Role:           string(llm.AssistantRole),
 				Content:        answer,
-				MetaData:       &models.MessageMetaData{ToolCalls: toolCalls},
+				MetaData:       buildAssistantMeta(parts, false),
 			})
 			if saveErr != nil {
 				l.log.WarnContext(ctx, "保存AI回复失败", slog.String("error", saveErr.Error()))
@@ -181,19 +184,31 @@ func (l *ChatStreamLogic) runChatTurnBG(
 				return
 			}
 			assistantMessageID = assistantMsg.ID.String()
+			// 如果没有发送过 token，则在这里发送最终 answer 作为 token 事件，确保客户端能收到完整回复
 			if answer != "" && !sentToken {
 				_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewTokenEvent(answer))
 			}
 		case *flow.ErrorMessage:
 			partial := strings.TrimSpace(msg.Partial)
 			if partial != "" {
+				parts = finalizePartsWithAnswer(parts, partial)
 				if _, saveErr := l.svcCtx.MessageRepo.Create(ctx, userID, &models.Message{
 					ConversationID: conversationID,
 					Role:           string(llm.AssistantRole),
 					Content:        partial,
-					MetaData:       &models.MessageMetaData{ToolCalls: toolCalls, Interrupted: true},
+					MetaData:       buildAssistantMeta(parts, true),
 				}); saveErr != nil {
 					l.log.WarnContext(ctx, "保存部分回复失败", slog.String("error", saveErr.Error()))
+				}
+			} else if len(parts) > 0 {
+				// 无 partial 文本但已有片段时仍落库，便于历史还原中断前状态
+				if _, saveErr := l.svcCtx.MessageRepo.Create(ctx, userID, &models.Message{
+					ConversationID: conversationID,
+					Role:           string(llm.AssistantRole),
+					Content:        "",
+					MetaData:       buildAssistantMeta(parts, true),
+				}); saveErr != nil {
+					l.log.WarnContext(ctx, "保存中断元数据失败", slog.String("error", saveErr.Error()))
 				}
 			}
 			messageText := strings.TrimSpace(msg.Message)
@@ -205,20 +220,19 @@ func (l *ChatStreamLogic) runChatTurnBG(
 			return
 		case *flow.ToolCallMessage:
 			if msg != nil {
+				parts = appendToolCallPart(parts, msg.Tool, msg.Input, msg.Iteration, msg.ToolCallID)
 				_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewToolCallEvent(msg.Tool, cloneFlowInput(msg.Input), msg.Iteration, msg.ToolCallID))
 			}
 		case *flow.ToolResultMessage:
 			if msg != nil {
+				obs := truncateObservation(msg.Observation)
+				parts = appendToolResultPart(parts, msg.Tool, msg.Input, obs, msg.Error, msg.Iteration, msg.ToolCallID)
 				_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewToolResultEvent(msg.Tool, cloneFlowInput(msg.Input), msg.Observation, msg.Error, msg.Iteration, msg.ToolCallID))
-				toolCalls = append(toolCalls, models.MessageToolCallMeta{
-					Tool:        msg.Tool,
-					Input:       cloneFlowInput(msg.Input),
-					Observation: msg.Observation,
-					Iteration:   msg.Iteration,
-				})
 			}
 		case *flow.PartialMessage:
 			if msg != nil && msg.Text != "" {
+				// Partial 入 parts（相邻 text merge），供历史还原交错正文
+				parts = appendTextPart(parts, msg.Text)
 				sentToken = true
 				_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewTokenEvent(msg.Text))
 			}
@@ -236,9 +250,7 @@ func cloneFlowInput(input map[string]any) map[string]any {
 		return nil
 	}
 	out := make(map[string]any, len(input))
-	for key, value := range input {
-		out[key] = value
-	}
+	maps.Copy(out, input)
 	return out
 }
 

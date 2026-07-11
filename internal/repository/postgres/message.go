@@ -68,6 +68,63 @@ func (r *MessageRepository) ListByConversationID(ctx context.Context, userID uui
 	return rows, nil
 }
 
+// ListPage 按 before 游标返回一页会话消息（ASC），并报告是否还有更早消息。
+func (r *MessageRepository) ListPage(ctx context.Context, userID uuid.UUID, query repository.MessageListQuery) ([]*models.Message, bool, error) {
+	limit := query.Limit
+	if limit < 1 {
+		limit = 30
+	}
+
+	db := r.db.WithContext(ctx).
+		Model(&models.Message{}).
+		Joins("JOIN conversations ON messages.conversation_id = conversations.id").
+		Where("messages.conversation_id = ?", query.ConversationID).
+		Where("conversations.user_id = ?", userID)
+
+	// 解析 before 锚点，使用 (created_at, id) 复合游标保证稳定分页
+	if query.BeforeID != nil {
+		var cursor models.Message
+		err := r.db.WithContext(ctx).
+			Model(&models.Message{}).
+			Joins("JOIN conversations ON messages.conversation_id = conversations.id").
+			Where("messages.id = ?", *query.BeforeID).
+			Where("messages.conversation_id = ?", query.ConversationID).
+			Where("conversations.user_id = ?", userID).
+			First(&cursor).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, false, xerr.BadRequest("before 消息不存在或不属于该会话")
+		}
+		if err != nil {
+			return nil, false, xerr.Wrapf(err, "解析消息游标失败")
+		}
+		db = db.Where(
+			"(messages.created_at < ? OR (messages.created_at = ? AND messages.id < ?))",
+			cursor.CreatedAt, cursor.CreatedAt, cursor.ID,
+		)
+	}
+
+	var rows []*models.Message
+	// 多取一条用于判断 has_more，再按时间倒序取靠近游标/最新的一侧
+	err := db.Order("messages.created_at DESC, messages.id DESC").
+		Limit(limit + 1).
+		Find(&rows).Error
+	if err != nil {
+		return nil, false, xerr.Wrapf(err, "查询会话消息分页失败")
+	}
+
+	hasMore := len(rows) > limit
+	if hasMore {
+		rows = rows[:limit]
+	}
+
+	// 反转为 ASC，方便前端直接渲染或 prepend
+	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+		rows[i], rows[j] = rows[j], rows[i]
+	}
+
+	return rows, hasMore, nil
+}
+
 func (r *MessageRepository) FindByID(ctx context.Context, userID uuid.UUID, messageID uuid.UUID) (*models.Message, error) {
 	message := &models.Message{}
 	err := r.db.WithContext(ctx).

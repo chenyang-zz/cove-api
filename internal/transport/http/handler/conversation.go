@@ -38,12 +38,17 @@ func (h ConversationHandler) CreateConversation(c *gin.Context) {
 }
 
 func (h ConversationHandler) ListConversations(c *gin.Context) {
+	var query request.ListConversationsRequest
+	if err := c.ShouldBindQuery(&query); err != nil {
+		response.FromError(c, xerr.Validation(err))
+		return
+	}
 	userID, err := util.UserIDFromContext(c.Request.Context())
 	if err != nil {
 		response.FromError(c, err)
 		return
 	}
-	out, err := conversationlogic.NewListConversationsLogic(c.Request.Context(), h.svc).ListConversations(userID)
+	out, err := conversationlogic.NewListConversationsLogic(c.Request.Context(), h.svc).ListConversations(userID, &query)
 	if err != nil {
 		response.FromError(c, err)
 		return
@@ -93,7 +98,7 @@ func (h ConversationHandler) DeleteConversation(c *gin.Context) {
 }
 
 func (h ConversationHandler) ListMessages(c *gin.Context) {
-	var query request.UriConversationIDRequest
+	var query request.ListMessagesRequest
 	if err := c.ShouldBindUri(&query); err != nil {
 		response.FromError(c, xerr.Validation(err))
 		return

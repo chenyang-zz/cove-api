@@ -6,8 +6,11 @@ import (
 
 	"github.com/boxify/api-go/internal/mapper"
 	"github.com/boxify/api-go/internal/observability/xlog"
+	"github.com/boxify/api-go/internal/repository"
 	"github.com/boxify/api-go/internal/svc"
+	"github.com/boxify/api-go/internal/transport/http/request"
 	"github.com/boxify/api-go/internal/transport/http/response"
+	"github.com/boxify/api-go/internal/xerr"
 	"github.com/google/uuid"
 )
 
@@ -25,10 +28,27 @@ func NewListConversationsLogic(ctx context.Context, svcCtx *svc.ServiceContext) 
 	}
 }
 
-func (l *ListConversationsLogic) ListConversations(userID uuid.UUID) (*response.ListResponse[*response.ConversationResponse], error) {
-	rows, err := l.svcCtx.ConversationRepo.List(l.ctx, userID)
+// ListConversations 分页获取会话列表。
+func (l *ListConversationsLogic) ListConversations(userID uuid.UUID, input *request.ListConversationsRequest) (*response.PageListResponse[*response.ConversationResponse], error) {
+	if input == nil {
+		return nil, xerr.BadRequest("会话列表参数不能为空")
+	}
+
+	rows, total, err := l.svcCtx.ConversationRepo.PageList(l.ctx, userID, repository.ConversationListQuery{
+		PageQuery: repository.PageQuery{
+			Page:     input.Page,
+			PageSize: input.PageSize,
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
-	return mapper.ConversationsToListResponse(rows), nil
+
+	list := mapper.ConversationsToListResponse(rows).List
+	return &response.PageListResponse[*response.ConversationResponse]{
+		Total:    total,
+		Page:     input.Page,
+		PageSize: input.PageSize,
+		List:     list,
+	}, nil
 }

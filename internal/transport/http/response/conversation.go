@@ -22,9 +22,24 @@ type ConversationResponse struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 
+// MessagePart 历史消息可展示片段（与流式 tool/token 时间线对齐）。
+// 可选字段用指针且不加 omitempty，缺省时 JSON 为 null。
+type MessagePart struct {
+	Type        string         `json:"type"`
+	Text        *string        `json:"text"`
+	Tool        *string        `json:"tool"`
+	Input       map[string]any `json:"input"`
+	Observation *string        `json:"observation"`
+	Error       *string        `json:"error"`
+	Iteration   *int           `json:"iteration"`
+	ToolCallID  *string        `json:"tool_call_id"`
+}
+
 type MessageMetaData struct {
-	ImageKeys  []string `json:"image_keys,omitempty"`
-	SenderName string   `json:"sender_name,omitempty"`
+	ImageKeys   []string      `json:"image_keys"`
+	SenderName  *string       `json:"sender_name"`
+	Parts       []MessagePart `json:"parts"`
+	Interrupted bool          `json:"interrupted"`
 }
 
 type MessageResponse struct {
@@ -34,7 +49,12 @@ type MessageResponse struct {
 	MetaData        *MessageMetaData `json:"meta_data"`
 	Images          []string         `json:"images"`
 	SenderPersonaID *uuid.UUID       `json:"sender_persona_id"`
-	SenderName      *string          `json:"sender_name"`
 	Feedback        *string          `json:"feedback"`
 	CreatedAt       time.Time        `json:"created_at"`
+}
+
+// MessageListResponse 会话消息列表（游标分页）。
+type MessageListResponse struct {
+	List    []*MessageResponse `json:"list"`
+	HasMore bool               `json:"has_more"`
 }

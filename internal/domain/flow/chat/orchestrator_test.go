@@ -1102,6 +1102,21 @@ func (r *fakeFlowMessageRepo) ListByConversationID(ctx context.Context, userID u
 	return out, nil
 }
 
+func (r *fakeFlowMessageRepo) ListPage(ctx context.Context, userID uuid.UUID, query repository.MessageListQuery) ([]*models.Message, bool, error) {
+	rows, err := r.ListByConversationID(ctx, userID, query.ConversationID)
+	if err != nil {
+		return nil, false, err
+	}
+	limit := query.Limit
+	if limit < 1 {
+		limit = 30
+	}
+	if len(rows) <= limit {
+		return rows, false, nil
+	}
+	return rows[len(rows)-limit:], true, nil
+}
+
 func (r *fakeFlowMessageRepo) FindByID(ctx context.Context, userID uuid.UUID, messageID uuid.UUID) (*models.Message, error) {
 	return nil, xerr.NotFound("消息不存在")
 }

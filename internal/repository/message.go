@@ -12,11 +12,20 @@ type MessageRepository interface {
 	Create(ctx context.Context, userID uuid.UUID, message *models.Message) (*models.Message, error)
 	List(ctx context.Context, userID uuid.UUID) ([]*models.Message, error)
 	ListByConversationID(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID) ([]*models.Message, error)
+	// ListPage 按用户归属与会话过滤，返回一页消息（时间 ASC）及是否还有更早消息。
+	ListPage(ctx context.Context, userID uuid.UUID, query MessageListQuery) (rows []*models.Message, hasMore bool, err error)
 	FindByID(ctx context.Context, userID uuid.UUID, messageID uuid.UUID) (*models.Message, error)
 	Update(ctx context.Context, userID uuid.UUID, message *models.Message) (*models.Message, error)
 	UpdateFields(ctx context.Context, userID uuid.UUID, messageID uuid.UUID, message *models.Message, fields *MessageUpdateFields) (*models.Message, error)
 	Delete(ctx context.Context, userID uuid.UUID, messageID uuid.UUID) error
 	Count(ctx context.Context, conversationID uuid.UUID) (int64, error)
+}
+
+// MessageListQuery 会话消息列表查询条件（游标分页）。
+type MessageListQuery struct {
+	ConversationID uuid.UUID
+	BeforeID       *uuid.UUID // nil 表示最新一页
+	Limit          int        // 已规范化后的 limit
 }
 
 type MessageUpdateFields struct {

@@ -147,11 +147,24 @@ func TestChatStreamPublishesToolEventsAndStoresToolMetadata(t *testing.T) {
 		t.Fatalf("messages len = %d, want 2", len(msgRepo.rows))
 	}
 	assistant := msgRepo.rows[1]
-	if assistant.MetaData == nil || len(assistant.MetaData.ToolCalls) != 1 {
-		t.Fatalf("assistant metadata = %+v, want one tool call", assistant.MetaData)
+	if assistant.MetaData == nil || len(assistant.MetaData.Parts) < 2 {
+		t.Fatalf("assistant metadata = %+v, want tool timeline in parts", assistant.MetaData)
 	}
-	if assistant.MetaData.ToolCalls[0].Tool != "current_time" || assistant.MetaData.ToolCalls[0].Observation == "" {
-		t.Fatalf("tool metadata = %+v, want current_time observation", assistant.MetaData.ToolCalls[0])
+	var sawCall, sawResult bool
+	for _, part := range assistant.MetaData.Parts {
+		switch part.Type {
+		case models.MessagePartTypeToolCall:
+			if part.Tool == "current_time" {
+				sawCall = true
+			}
+		case models.MessagePartTypeToolResult:
+			if part.Tool == "current_time" && part.Observation != "" {
+				sawResult = true
+			}
+		}
+	}
+	if !sawCall || !sawResult {
+		t.Fatalf("assistant parts = %#v, want tool_call and tool_result for current_time", assistant.MetaData.Parts)
 	}
 }
 
@@ -514,6 +527,10 @@ func (r *fakeChatConversationRepo) List(ctx context.Context, userID uuid.UUID) (
 	return nil, nil
 }
 
+func (r *fakeChatConversationRepo) PageList(ctx context.Context, userID uuid.UUID, query repository.ConversationListQuery) ([]*models.Conversation, int64, error) {
+	return nil, 0, nil
+}
+
 func (r *fakeChatConversationRepo) FindByID(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID) (*models.Conversation, error) {
 	for _, row := range r.rows {
 		if row.UserID == userID && row.ID == conversationID {
@@ -565,6 +582,21 @@ func (r *fakeChatMessageRepo) ListByConversationID(ctx context.Context, userID u
 		return a.CreatedAt.Compare(b.CreatedAt)
 	})
 	return out, nil
+}
+
+func (r *fakeChatMessageRepo) ListPage(ctx context.Context, userID uuid.UUID, query repository.MessageListQuery) ([]*models.Message, bool, error) {
+	rows, err := r.ListByConversationID(ctx, userID, query.ConversationID)
+	if err != nil {
+		return nil, false, err
+	}
+	limit := query.Limit
+	if limit < 1 {
+		limit = 30
+	}
+	if len(rows) <= limit {
+		return rows, false, nil
+	}
+	return rows[len(rows)-limit:], true, nil
 }
 
 func (r *fakeChatMessageRepo) FindByID(ctx context.Context, userID uuid.UUID, messageID uuid.UUID) (*models.Message, error) {

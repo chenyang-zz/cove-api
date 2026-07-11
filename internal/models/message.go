@@ -15,18 +15,30 @@ import (
 	"github.com/google/uuid"
 )
 
-type MessageMetaData struct {
-	ImageKeys   []string              `json:"image_keys"`
-	SenderName  string                `json:"sender_name"`
-	ToolCalls   []MessageToolCallMeta `json:"tool_calls,omitempty"`
-	Interrupted bool                  `json:"interrupted,omitempty"`
-}
+// MessagePartType 消息可展示片段类型，与流式事件对齐。
+const (
+	MessagePartTypeText       = "text"
+	MessagePartTypeToolCall   = "tool_call"
+	MessagePartTypeToolResult = "tool_result"
+)
 
-type MessageToolCallMeta struct {
-	Tool        string         `json:"tool"`
+// MessagePart 一回合内可展示片段，顺序即 UI 顺序。
+type MessagePart struct {
+	Type        string         `json:"type"` // text | tool_call | tool_result
+	Text        string         `json:"text,omitempty"`
+	Tool        string         `json:"tool,omitempty"`
 	Input       map[string]any `json:"input,omitempty"`
 	Observation string         `json:"observation,omitempty"`
+	Error       string         `json:"error,omitempty"`
 	Iteration   int            `json:"iteration,omitempty"`
+	ToolCallID  string         `json:"tool_call_id,omitempty"`
+}
+
+type MessageMetaData struct {
+	ImageKeys   []string      `json:"image_keys"`
+	SenderName  string        `json:"sender_name"`
+	Parts       []MessagePart `json:"parts,omitempty"`
+	Interrupted bool          `json:"interrupted,omitempty"`
 }
 
 func (m MessageMetaData) Value() (driver.Value, error) {
@@ -57,7 +69,7 @@ type Message struct {
 	SenderPersonaID *uuid.UUID `gorm:"column:sender_persona_id;type:uuid;"`
 	// 多人实时群聊中该 user 消息由哪个真人发出（单人会话/AI 消息为空）
 	SenderUserID *uuid.UUID `gorm:"column:sender_user_id;type:uuid;"`
-	// 附加信息：引用 citations / 工具调用 tool_calls / token usage / 图片等
+	// 附加信息：parts 时间线 / 图片 / 中断标记等
 	MetaData  *MessageMetaData `gorm:"column:meta_data;type:jsonb"`
 	CreatedAt time.Time        `gorm:"column:created_at;autoCreateTime"`
 }

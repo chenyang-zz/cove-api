@@ -15,7 +15,10 @@ func RegisterConversationRoutes(api *gin.RouterGroup, conversation handler.Conve
 	conversationRoutes := api.Group("/conversation", authMiddleware)
 	// routegen: auth user_id input=request.CreateConversationRequest output=response.ConversationResponse
 	conversationRoutes.POST("/", conversation.CreateConversation)
-	// routegen: auth user_id output=response.ListResponse[*response.ConversationResponse]
+	// @auth(user_id)
+	// @description 分页获取会话列表
+	// @input request.ListConversationsRequest
+	// @output response.PageListResponse[*response.ConversationResponse]
 	conversationRoutes.GET("/", conversation.ListConversations)
 	// @auth(user_id)
 	// @description 重命名会话
@@ -29,8 +32,8 @@ func RegisterConversationRoutes(api *gin.RouterGroup, conversation handler.Conve
 	conversationRoutes.DELETE("/:conversation_id", conversation.DeleteConversation)
 	conversationRoutes.POST("/:conversation_id/delete", conversation.DeleteConversation)
 	// @auth(user_id)
-	// @description 获取消息列表
-	// @input request.UriConversationIDRequest
-	// @response ListResponse[*response.MessageResponse]
+	// @description 获取会话消息列表（支持 before 游标滚动加载历史）
+	// @input request.ListMessagesRequest
+	// @output response.MessageListResponse
 	conversationRoutes.GET("/:conversation_id/messages", conversation.ListMessages)
 }

@@ -42,15 +42,12 @@ func ConversationsToListResponse(rows []*models.Conversation) *response.ListResp
 }
 
 func MessageToResponse(row *models.Message, imagesMap map[uuid.UUID][]string, ratingMap map[uuid.UUID]string) *response.MessageResponse {
-
 	images := make([]string, 0)
-	metadata := &response.MessageMetaData{
-		ImageKeys:  row.MetaData.ImageKeys,
-		SenderName: row.MetaData.SenderName,
-	}
 	if imgs, exist := imagesMap[row.ID]; exist {
 		images = imgs
 	}
+
+	metadata := messageMetaToResponse(row.MetaData)
 
 	res := &response.MessageResponse{
 		ID:        row.ID,
@@ -61,11 +58,9 @@ func MessageToResponse(row *models.Message, imagesMap map[uuid.UUID][]string, ra
 		CreatedAt: row.CreatedAt,
 	}
 
+	// 可选字段保持 null，不加 omitempty；sender_name 仅放在 meta_data 内
 	if row.SenderPersonaID != nil && *row.SenderPersonaID != uuid.Nil {
 		res.SenderPersonaID = row.SenderPersonaID
-	}
-	if metadata.SenderName != "" {
-		res.SenderName = &row.MetaData.SenderName
 	}
 	if rating, exist := ratingMap[row.ID]; exist {
 		res.Feedback = &rating
@@ -74,11 +69,61 @@ func MessageToResponse(row *models.Message, imagesMap map[uuid.UUID][]string, ra
 	return res
 }
 
-func MessagesToListResponse(rows []*models.Message, imagesMap map[uuid.UUID][]string, ratingMap map[uuid.UUID]string) *response.ListResponse[*response.
-	MessageResponse] {
+// messageMetaToResponse 将模型 meta 转为响应；可选字段用指针，空则为 null。
+func messageMetaToResponse(meta *models.MessageMetaData) *response.MessageMetaData {
+	if meta == nil {
+		return &response.MessageMetaData{}
+	}
+
+	out := &response.MessageMetaData{
+		ImageKeys:   meta.ImageKeys,
+		SenderName:  optionalStringPtr(meta.SenderName),
+		Interrupted: meta.Interrupted,
+	}
+	// 透出有序 parts，供前端还原流式样式
+	if len(meta.Parts) > 0 {
+		out.Parts = make([]response.MessagePart, 0, len(meta.Parts))
+		for _, part := range meta.Parts {
+			out.Parts = append(out.Parts, messagePartToResponse(part))
+		}
+	}
+	return out
+}
+
+func messagePartToResponse(part models.MessagePart) response.MessagePart {
+	out := response.MessagePart{
+		Type:  part.Type,
+		Input: part.Input, // nil map → JSON null
+	}
+	out.Text = optionalStringPtr(part.Text)
+	out.Tool = optionalStringPtr(part.Tool)
+	out.Observation = optionalStringPtr(part.Observation)
+	out.Error = optionalStringPtr(part.Error)
+	out.ToolCallID = optionalStringPtr(part.ToolCallID)
+	// iteration：仅工具相关 part 写出，纯 text 保持 null
+	if part.Type == models.MessagePartTypeToolCall || part.Type == models.MessagePartTypeToolResult {
+		iteration := part.Iteration
+		out.Iteration = &iteration
+	}
+	return out
+}
+
+// optionalStringPtr 空字符串转为 nil，JSON 序列化为 null。
+func optionalStringPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// MessagesToListResponse 将消息列表映射为带 has_more 的会话消息列表响应。
+func MessagesToListResponse(rows []*models.Message, imagesMap map[uuid.UUID][]string, ratingMap map[uuid.UUID]string, hasMore bool) *response.MessageListResponse {
 	out := make([]*response.MessageResponse, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, MessageToResponse(row, imagesMap, ratingMap))
 	}
-	return &response.ListResponse[*response.MessageResponse]{List: out}
+	return &response.MessageListResponse{
+		List:    out,
+		HasMore: hasMore,
+	}
 }

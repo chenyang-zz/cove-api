@@ -47,6 +47,29 @@ func (r *ConversationRepository) List(ctx context.Context, userID uuid.UUID) ([]
 	return rows, nil
 }
 
+// PageList 按用户分页查询会话（updated_at DESC），返回当前页与总数。
+func (r *ConversationRepository) PageList(ctx context.Context, userID uuid.UUID, query repository.ConversationListQuery) ([]*models.Conversation, int64, error) {
+	db := r.db.WithContext(ctx).
+		Model(&models.Conversation{}).
+		Where("user_id = ?", userID)
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, xerr.Wrapf(err, "统计会话列表失败")
+	}
+
+	limit, offset := query.LimitOffset(20)
+	var rows []*models.Conversation
+	err := db.Order("updated_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&rows).Error
+	if err != nil {
+		return nil, 0, xerr.Wrapf(err, "查询会话分页列表失败")
+	}
+	return rows, total, nil
+}
+
 func (r *ConversationRepository) FindByID(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID) (*models.Conversation, error) {
 	conversation := &models.Conversation{}
 	err := r.db.WithContext(ctx).

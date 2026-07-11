@@ -283,38 +283,16 @@
         },
         "type": "object"
       },
-      "MessageResponse": {
+      "MessageListResponse": {
         "properties": {
-          "content": {
-            "type": "string"
+          "has_more": {
+            "type": "boolean"
           },
-          "created_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "feedback": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "images": {
+          "list": {
             "items": {
-              "type": "string"
+              "type": "object"
             },
             "type": "array"
-          },
-          "meta_data": {
-            "type": "object"
-          },
-          "role": {
-            "type": "string"
-          },
-          "sender_name": {
-            "type": "string"
-          },
-          "sender_persona_id": {
-            "type": "string"
           }
         },
         "type": "object"
@@ -1610,7 +1588,26 @@
     },
     "/api/conversation": {
       "get": {
+        "description": "分页获取会话列表",
         "operationId": "conversationListConversations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1627,6 +1624,15 @@
                             "$ref": "#/components/schemas/ConversationResponse"
                           },
                           "type": "array"
+                        },
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
                         }
                       },
                       "type": "object"
@@ -1950,13 +1956,29 @@
     },
     "/api/conversation/{conversation_id}/messages": {
       "get": {
-        "description": "获取消息列表",
+        "description": "获取会话消息列表（支持 before 游标滚动加载历史）",
         "operationId": "conversationListMessages",
         "parameters": [
           {
             "in": "path",
             "name": "conversation_id",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1972,15 +1994,7 @@
                       "type": "integer"
                     },
                     "data": {
-                      "properties": {
-                        "list": {
-                          "items": {
-                            "$ref": "#/components/schemas/MessageResponse"
-                          },
-                          "type": "array"
-                        }
-                      },
-                      "type": "object"
+                      "$ref": "#/components/schemas/MessageListResponse"
                     },
                     "message": {
                       "type": "string"

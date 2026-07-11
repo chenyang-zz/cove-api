@@ -16,10 +16,17 @@ import (
 type ConversationRepository interface {
 	Create(ctx context.Context, userID uuid.UUID, conversation *models.Conversation) (*models.Conversation, error)
 	List(ctx context.Context, userID uuid.UUID) ([]*models.Conversation, error)
+	// PageList 按用户分页查询会话，返回当前页与总数。
+	PageList(ctx context.Context, userID uuid.UUID, query ConversationListQuery) (rows []*models.Conversation, total int64, err error)
 	FindByID(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID) (*models.Conversation, error)
 	Update(ctx context.Context, userID uuid.UUID, conversation *models.Conversation) (*models.Conversation, error)
 	UpdateFields(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID, conversation *models.Conversation, fields *ConversationUpdateFields) (*models.Conversation, error)
 	Delete(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID) error
+}
+
+// ConversationListQuery 会话列表分页查询条件。
+type ConversationListQuery struct {
+	PageQuery
 }
 
 type ConversationUpdateFields struct {

@@ -41,3 +41,15 @@ This project is indexed by GitNexus as **cove** (186 symbols, 336 relationships,
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+## API Documentation and Environment Configuration
+
+- The OpenAPI contract is located at `/Users/sheepzhao/WorkSpace/agent/boxify/api-go/docs/openapi.json`. Before adding or changing an API call, use it to verify the path, request body, response shape, and authentication requirements.
+- The frontend API base URL is supplied exclusively through `VITE_API_BASE_URL`; it defaults to `http://localhost:8000` when unset.
+- Configure environment-specific values in uncommitted files such as `frontend/.env.development.local` and `frontend/.env.production.local`. Do not hard-code environment URLs in application code.
+- If the `openapi.json` path changes, update this instruction at the same time.
+
+## iOS UI Debugging
+
+- Treat iOS as the primary mobile platform: design, implement, and validate mobile-facing changes against iOS first.
+- When debugging iOS visual or interaction changes, run the app in an iOS Simulator by default. Use a physical device only for device-specific verification after simulator validation.

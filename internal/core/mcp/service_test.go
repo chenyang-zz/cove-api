@@ -456,7 +456,7 @@ func TestServiceOpenToolsRespectsDiscoverTimeout(t *testing.T) {
 	service := NewService(Options{
 		SessionOpener:   opener,
 		DiscoverTimeout: 30 * time.Millisecond,
-		FailCooldown:     time.Minute,
+		FailCooldown:    time.Minute,
 	})
 
 	start := time.Now()
@@ -674,5 +674,3 @@ func TestStaleRequiresMatchingFingerprintAndTools(t *testing.T) {
 		t.Fatal("Stale(match) = false, want true")
 	}
 }
-
-

@@ -141,7 +141,35 @@ func (c *MemoryToolCache) Valid(server, entry) bool {
 
 TTL 默认 5 分钟（`DefaultTTL`），过期后下一次调用触发远端刷新。
 
-### 3.4 延迟连接 `OpenTools()`
+### 3.4 发现超时与失败冷却
+
+对话链路中 `toolRegistry` 会同步调用 `OpenTools`。若无独立超时，网络 hang 常会落到操作系统级
+约 60s 连接超时；且失败不缓存时，下一轮对话仍会再等一轮。
+
+核心层默认保护：
+
+| 机制 | 默认 | 作用 |
+|------|------|------|
+| `DiscoverTimeout` | 5s | Connect + ListTools 上界 |
+| `FailCooldown` | 30s | 失败后跳过远端探测 |
+| stale-if-error | — | 有指纹匹配的 runtime 工具列表时降级复用（可已过 TTL） |
+
+```
+OpenTools / BuildToolList
+    │
+    ├─ valid cache → 立即返回
+    ├─ fail cooldown?
+    │     ├─ stale tools → lazy / 列表降级返回（不打远端）
+    │     └─ 无 stale → 立即 error
+    └─ discover(ctx, DiscoverTimeout)
+          ├─ 成功 → Set cache、清冷却
+          └─ 失败 → 记冷却；有 stale 则降级，否则 error
+```
+
+`RefreshToolList`（手动同步）**忽略冷却**强制探测，但仍受 `DiscoverTimeout` 约束。
+`CallTool` 不受发现超时限制。
+
+### 3.5 延迟连接 `OpenTools()`
 
 `OpenTools()` 在缓存命中时实现 **lazy session**：
 
@@ -153,9 +181,11 @@ OpenTools(ctx, server)
     │       ├─ 命中 && Valid
     │       │       └─ newOpenedTools(tools, opener, session=nil)  ◀── 延迟建立连接
     │       │
-    │       └─ 未命中
-    │               ├─ opener.OpenSession()              ◀── 立即建连
-    │               ├─ session.ListTools()
+    │       └─ 未命中 / 过期
+    │               ├─ fail cooldown + stale? → lazy stale tools
+    │               ├─ opener.OpenSession(discoverCtx)   ◀── DiscoverTimeout
+    │               ├─ session.ListTools(discoverCtx)
+    │               ├─ 失败 → 记冷却；可 stale-if-error
     │               ├─ cache.Set(...)
     │               └─ newOpenedTools(tools, opener, session)
     │
@@ -176,10 +206,11 @@ func (o *OpenedTools) CallTool(ctx, name, input) {
 }
 ```
 
-### 3.5 并发安全
+### 3.6 并发安全
 
 - `OpenedTools.CallTool()` 使用 `sync.Mutex` 串行化，保证同一 session 的请求顺序。
 - `MemoryToolCache` 使用 `sync.RWMutex`，读多写少场景友好。
+- 失败冷却 map 由 `Service` 内部 mutex 保护。
 - `cloneTools()` 每次返回深拷贝，防止调用方修改污染缓存条目。
 
 ---
@@ -268,30 +299,31 @@ toolRegistry(ctx, userID)
     │
     ├─ 3. 过滤 registry：只保留 enabled 的工具
     │
-    └─ 4. 遍历 MCP servers
+    └─ 4. MCP servers（有限并行发现 + 串行注册）
             │
-            ├─ server.Enabled == false → skip
+            ├─ 收集 enabled servers + ServerConfig.decrypt
             │
-            ├─ ServerConfig.decrypt(auth_config)  ◀── Fernet 解密
+            ├─ Phase 1 并行发现
+            │     mcpCtx = WithTimeout(ctx, assembleBudget=8s)
+            │     concurrency semaphore = 4
+            │     go OpenTools(mcpCtx, serverConfig) per server
+            │           ├─ 缓存命中 → lazy session
+            │           └─ 缓存失效 → DiscoverTimeout 内建连+ListTools
             │
-            ├─ MCPToolService.OpenTools(serverConfig)
-            │       │
-            │       ├─ 缓存命中 → lazy session (不建连)
-            │       └─ 缓存失效 → 立即 ListTools + 建连
-            │
-            ├─ Definitions(server, opened.Tools())
-            │       └─ 构造 domain/mcp.Definition 列表
-            │
-            ├─ 过滤用户显式禁用的工具
-            │
-            ├─ NewTool(definition, opened) → coretool.Tool
-            │       └─ adapter: 将 CallResult 转换为 coretool.Output
-            │
-            └─ filtered.Register(tool)
+            └─ Phase 2 串行注册（稳定顺序，无并发写 registry）
+                  ├─ OpenTools 失败 → warn + skip
+                  ├─ Definitions + 工具级启停过滤
+                  ├─ NewTool → filtered.Register
+                  └─ Register 硬错误 → closeAll + return error
 ```
 
-**连接管理**：所有 `OpenedTools` lease 收集到 `leases` 切片，通过 `closeAll`
-闭包在 `generate()` 结束时统一关闭（defer），保证异常路径也能释放连接。
+**组装预算**：多 server 发现墙钟与并发度由 `configs.mcp` 控制（默认
+`assemble_budget=8s`、`assemble_concurrency=4`）；单 server 仍受
+`tools_cache_ttl` / `discover_timeout` / `fail_cooldown` 约束。可在
+`configs/config.yml` 或环境变量 `MCP_*` 中覆盖。
+
+**连接管理**：所有成功的 `OpenedTools` lease 在 Wait 后统一收集，通过 `closeAll`
+闭包在 `generate()` 结束时关闭（defer）；Register 失败路径也会释放本轮全部 lease。
 
 ### 5.2 MCP 工具调用的完整路径
 
@@ -372,11 +404,8 @@ HTTP 查询阶段 (GET /tool-configs):
 Chat 编排阶段 (Orchestrator.generate):
   toolRegistry()
       ├─ builtin tools ─▶ enabled map
-      ├─ 遍历 servers
-      │     ├─ ServerConfig.decrypt()
-      │     ├─ OpenTools() ─▶ 缓存命中? lazy : 立即建连
-      │     ├─ Definitions()
-      │     └─ Register(NewTool(definition, opened))
+      ├─ MCP Phase1 并行 OpenTools(mcpCtx, budget=8s, concurrency=4)
+      ├─ MCP Phase2 串行 Definitions + Register
       └─ defer closeAll()
 
 Chat 调用阶段 (Agent → MCP):
@@ -400,7 +429,7 @@ Chat 调用阶段 (Agent → MCP):
 |--------|---------|
 | **稳定性** | ToolKey 包含 server UUID 与 hash，重命名 / 同名工具不冲突 |
 | **可用性** | 三层降级：实时 → 快照(stale) → 空(empty)，远端抖动不影响前端展示 |
-| **性能** | 内存缓存 TTL 5 分钟，OpenTools 延迟建连，并发信号量限制 |
+| **性能** | 内存缓存 TTL 5 分钟；发现超时 5s + 失败冷却 30s；对话组装有限并行（concurrency=4）+ 墙钟预算 8s |
 | **安全** | auth_config Fernet 加密存储，仅在内存中解密使用 |
 | **一致性** | Fingerprint 包含全部连接配置，任何变更立即失效缓存 |
 | **资源释放** | OpenedTools.Close() 幂等，编排器 defer closeAll() 兜底 |

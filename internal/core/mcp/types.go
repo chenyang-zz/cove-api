@@ -12,7 +12,15 @@ import (
 )
 
 const (
+	// DefaultTTL 是运行时工具列表缓存的默认有效期。
 	DefaultTTL = 5 * time.Minute
+	// DefaultDiscoverTimeout 是 Connect + ListTools 发现路径的默认超时。
+	// 对话组装等同步路径不应依赖操作系统级 ~60s 连接超时。
+	DefaultDiscoverTimeout = 5 * time.Second
+	// DefaultFailCooldown 是发现失败后跳过远端探测的默认冷却窗口。
+	DefaultFailCooldown = 30 * time.Second
+	// DefaultDialTimeout 是 MCP HTTP 传输层 TCP/TLS 建连超时。
+	DefaultDialTimeout = 3 * time.Second
 
 	TransportSSE            = "sse"
 	TransportStreamableHTTP = "streamable_http"

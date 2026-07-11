@@ -47,6 +47,21 @@ func TestNewReturnsErrorForInvalidAccessTokenTTL(t *testing.T) {
 	}
 }
 
+// TestNewReturnsErrorForInvalidMCPDiscoverTimeout 验证 MCP 时长配置非法时启动失败。
+func TestNewReturnsErrorForInvalidMCPDiscoverTimeout(t *testing.T) {
+	cfg := config.Config{}
+	cfg.Database.URL = "   "
+	cfg.JWT.Secret = "test-secret"
+	cfg.JWT.AccessTokenTTL = "168h"
+	cfg.SecretKey = "0123456789abcdef0123456789abcdef"
+	cfg.MCP.DiscoverTimeout = "not-a-duration"
+
+	_, err := svc.New(context.Background(), cfg)
+	if err == nil || !strings.Contains(err.Error(), "MCP discover_timeout 配置无效") {
+		t.Fatalf("svc.New error = %v, want invalid mcp discover_timeout error", err)
+	}
+}
+
 func TestCloseCanBeCalledRepeatedly(t *testing.T) {
 	svcCtx := &svc.ServiceContext{Storage: storage.NewLocalStore(t.TempDir())}
 	ctx := context.Background()

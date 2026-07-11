@@ -26,6 +26,7 @@ type Config struct {
 	Memory        MemoryConfig        `yaml:"memory"`
 	Agent         AgentConfig         `yaml:"agent"`
 	Skill         SkillConfig         `yaml:"skill"`
+	MCP           MCPConfig           `yaml:"mcp"`
 }
 
 type AppConfig struct {
@@ -119,6 +120,22 @@ type SkillConfig struct {
 	MaxCount int `yaml:"max_count"`
 }
 
+// MCPConfig 控制 MCP 工具发现、失败冷却与对话组装并发。
+//
+// 时长字段使用 Go duration 字符串（如 "5s"、"5m"），与 JWT.AccessTokenTTL 一致。
+type MCPConfig struct {
+	// ToolsCacheTTL 是运行时工具列表缓存 TTL（如 "5m"）。
+	ToolsCacheTTL string `yaml:"tools_cache_ttl"`
+	// DiscoverTimeout 是单次 Connect+ListTools 超时（如 "5s"）。
+	DiscoverTimeout string `yaml:"discover_timeout"`
+	// FailCooldown 是发现失败后的冷却窗口（如 "30s"）。
+	FailCooldown string `yaml:"fail_cooldown"`
+	// AssembleBudget 是单轮对话 MCP 并行发现的墙钟上限（如 "8s"）。
+	AssembleBudget string `yaml:"assemble_budget"`
+	// AssembleConcurrency 是同时 OpenTools 的最大 server 数。
+	AssembleConcurrency int `yaml:"assemble_concurrency"`
+}
+
 func Load() Config {
 	path := os.Getenv("CONFIG_PATH")
 	if path == "" {
@@ -187,6 +204,13 @@ func defaultConfig() Config {
 		Skill: SkillConfig{
 			MaxCount: 200,
 		},
+		MCP: MCPConfig{
+			ToolsCacheTTL:       "5m",
+			DiscoverTimeout:     "5s",
+			FailCooldown:        "30s",
+			AssembleBudget:      "8s",
+			AssembleConcurrency: 4,
+		},
 	}
 }
 
@@ -229,6 +253,11 @@ func applyEnv(cfg *Config) {
 	cfg.Rag.EmbeddingBatchSize = envInt("RAG_EMBEDDING_BATCH_SIZE", cfg.Rag.EmbeddingBatchSize)
 	cfg.Rag.ChunkIndex = env("RAG_CHUNK_INDEX", cfg.Rag.ChunkIndex)
 	cfg.Skill.MaxCount = envInt("SKILL_MAX_COUNT", cfg.Skill.MaxCount)
+	cfg.MCP.ToolsCacheTTL = env("MCP_TOOLS_CACHE_TTL", cfg.MCP.ToolsCacheTTL)
+	cfg.MCP.DiscoverTimeout = env("MCP_DISCOVER_TIMEOUT", cfg.MCP.DiscoverTimeout)
+	cfg.MCP.FailCooldown = env("MCP_FAIL_COOLDOWN", cfg.MCP.FailCooldown)
+	cfg.MCP.AssembleBudget = env("MCP_ASSEMBLE_BUDGET", cfg.MCP.AssembleBudget)
+	cfg.MCP.AssembleConcurrency = envInt("MCP_ASSEMBLE_CONCURRENCY", cfg.MCP.AssembleConcurrency)
 }
 
 func env(key, fallback string) string {

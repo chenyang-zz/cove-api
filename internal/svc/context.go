@@ -96,6 +96,10 @@ func New(ctx context.Context, cfg config.Config) (*ServiceContext, error) {
 	if err != nil {
 		return nil, xerr.BadRequest("JWT access token TTL 配置无效")
 	}
+	mcpToolService, err := newMCPToolService(cfg.MCP)
+	if err != nil {
+		return nil, err
+	}
 
 	promptManager := prompt.NewManager()
 	if err := appprompts.Register(promptManager); err != nil {
@@ -120,7 +124,7 @@ func New(ctx context.Context, cfg config.Config) (*ServiceContext, error) {
 		PromptManager:  promptManager,
 		PromptClient:   promptsgen.NewClient(promptManager),
 		LLMManager:     BuildLLMManager(),
-		MCPToolService: coremcp.NewService(coremcp.Options{}),
+		MCPToolService: mcpToolService,
 		SkillRegistry:  skillRegistry,
 	}
 	bindPostgresRepositories(svcCtx, db)
@@ -359,4 +363,43 @@ func BuildStorage(cfg config.StorageConfig) (storage.Store, storage.URLSigner, e
 	default:
 		return nil, nil, xerr.BadRequest("存储 backend 配置无效")
 	}
+}
+
+// newMCPToolService 根据配置构造 MCP 工具服务；时长字段非法时返回错误以阻断启动。
+func newMCPToolService(cfg config.MCPConfig) (*coremcp.Service, error) {
+	opts := make([]coremcp.Option, 0, 3)
+	if cfg.ToolsCacheTTL != "" {
+		ttl, err := time.ParseDuration(cfg.ToolsCacheTTL)
+		if err != nil {
+			return nil, xerr.BadRequest("MCP tools_cache_ttl 配置无效")
+		}
+		if ttl > 0 {
+			opts = append(opts, coremcp.WithTTL(ttl))
+		}
+	}
+	if cfg.DiscoverTimeout != "" {
+		timeout, err := time.ParseDuration(cfg.DiscoverTimeout)
+		if err != nil {
+			return nil, xerr.BadRequest("MCP discover_timeout 配置无效")
+		}
+		if timeout > 0 {
+			opts = append(opts, coremcp.WithDiscoverTimeout(timeout))
+		}
+	}
+	if cfg.FailCooldown != "" {
+		cooldown, err := time.ParseDuration(cfg.FailCooldown)
+		if err != nil {
+			return nil, xerr.BadRequest("MCP fail_cooldown 配置无效")
+		}
+		if cooldown > 0 {
+			opts = append(opts, coremcp.WithFailCooldown(cooldown))
+		}
+	}
+	// 启动时一并校验对话组装相关 duration，避免运行期才发现配置错误。
+	if cfg.AssembleBudget != "" {
+		if _, err := time.ParseDuration(cfg.AssembleBudget); err != nil {
+			return nil, xerr.BadRequest("MCP assemble_budget 配置无效")
+		}
+	}
+	return coremcp.NewService(opts...), nil
 }

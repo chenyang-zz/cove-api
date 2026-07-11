@@ -64,7 +64,7 @@ func TestListToolConfigsGroupsFreshMCPTools(t *testing.T) {
 	svcCtx := newToolConfigTestServiceContext(repo)
 	svcCtx.MCPServerRepo.(*fakeToolConfigMCPServerRepo).rows = []*models.MCPServer{server}
 	client := &fakeToolConfigMCPClient{tools: []coremcp.ToolInfo{{Name: "search", Title: "远端搜索", Description: "查找网页"}}}
-	svcCtx.MCPToolService = coremcp.NewService(coremcp.Options{Client: client})
+	svcCtx.MCPToolService = coremcp.NewService(coremcp.WithClient(client))
 
 	out, err := NewListToolConfigsLogic(context.Background(), svcCtx).ListToolConfigs(userID)
 	if err != nil {
@@ -92,7 +92,7 @@ func TestListToolConfigsFallsBackToStaleMCPSnapshot(t *testing.T) {
 	repo := &fakeToolConfigRepo{}
 	svcCtx := newToolConfigTestServiceContext(repo)
 	svcCtx.MCPServerRepo.(*fakeToolConfigMCPServerRepo).rows = []*models.MCPServer{server}
-	svcCtx.MCPToolService = coremcp.NewService(coremcp.Options{Client: &fakeToolConfigMCPClient{err: errors.New("offline")}})
+	svcCtx.MCPToolService = coremcp.NewService(coremcp.WithClient(&fakeToolConfigMCPClient{err: errors.New("offline")}))
 
 	out, err := NewListToolConfigsLogic(context.Background(), svcCtx).ListToolConfigs(userID)
 	if err != nil {
@@ -110,7 +110,7 @@ func TestListToolConfigsMarksEmptyWhenMCPRefreshAndSnapshotAreUnavailable(t *tes
 	server := &models.MCPServer{ID: uuid.New(), UserID: userID, Name: "空服务", Enabled: true}
 	svcCtx := newToolConfigTestServiceContext(&fakeToolConfigRepo{})
 	svcCtx.MCPServerRepo.(*fakeToolConfigMCPServerRepo).rows = []*models.MCPServer{server}
-	svcCtx.MCPToolService = coremcp.NewService(coremcp.Options{Client: &fakeToolConfigMCPClient{err: errors.New("offline")}})
+	svcCtx.MCPToolService = coremcp.NewService(coremcp.WithClient(&fakeToolConfigMCPClient{err: errors.New("offline")}))
 
 	out, err := NewListToolConfigsLogic(context.Background(), svcCtx).ListToolConfigs(userID)
 	if err != nil {
@@ -132,7 +132,7 @@ func TestListToolConfigsUsesDisabledMCPSnapshotWithoutRemoteCall(t *testing.T) {
 	repo := &fakeToolConfigRepo{}
 	svcCtx := newToolConfigTestServiceContext(repo)
 	svcCtx.MCPServerRepo.(*fakeToolConfigMCPServerRepo).rows = []*models.MCPServer{server}
-	svcCtx.MCPToolService = coremcp.NewService(coremcp.Options{Client: client})
+	svcCtx.MCPToolService = coremcp.NewService(coremcp.WithClient(client))
 
 	out, err := NewListToolConfigsLogic(context.Background(), svcCtx).ListToolConfigs(userID)
 	if err != nil {
@@ -242,7 +242,7 @@ func newToolConfigTestServiceContext(repo *fakeToolConfigRepo) *svc.ServiceConte
 	return &svc.ServiceContext{
 		ToolConfigRepo: repo,
 		MCPServerRepo:  &fakeToolConfigMCPServerRepo{},
-		MCPToolService: coremcp.NewService(coremcp.Options{Client: &fakeToolConfigMCPClient{}}),
+		MCPToolService: coremcp.NewService(coremcp.WithClient(&fakeToolConfigMCPClient{})),
 	}
 }
 

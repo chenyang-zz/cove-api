@@ -57,3 +57,10 @@ func (c *MemoryToolCache) Valid(server ServerConfig, entry CacheEntry) bool {
 	}
 	return entry.Fingerprint == Fingerprint(server) && now().Before(entry.ExpiresAt)
 }
+
+// Stale reports whether entry 的指纹仍匹配且包含可复用工具列表。
+//
+// 与 Valid 不同，Stale 忽略 TTL，用于远端发现失败时的 stale-if-error 降级。
+func Stale(server ServerConfig, entry CacheEntry) bool {
+	return entry.Fingerprint == Fingerprint(server) && len(entry.Tools) > 0
+}

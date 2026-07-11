@@ -73,3 +73,10 @@ agent:
 
 skill:
     max_count: 200
+
+mcp:
+  tools_cache_ttl: 5m
+  discover_timeout: 5s
+  fail_cooldown: 30s
+  assemble_budget: 8s
+  assemble_concurrency: 4

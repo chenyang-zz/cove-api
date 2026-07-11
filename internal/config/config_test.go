@@ -31,6 +31,10 @@ func TestLoadFileUsesDefaultsWhenYAMLIsMissing(t *testing.T) {
 	if cfg.Skill.MaxCount != 200 {
 		t.Fatalf("skill max count = %d, want 200", cfg.Skill.MaxCount)
 	}
+	if cfg.MCP.ToolsCacheTTL != "5m" || cfg.MCP.DiscoverTimeout != "5s" || cfg.MCP.FailCooldown != "30s" ||
+		cfg.MCP.AssembleBudget != "8s" || cfg.MCP.AssembleConcurrency != 4 {
+		t.Fatalf("mcp defaults = %#v, want 5m/5s/30s/8s/4", cfg.MCP)
+	}
 }
 
 // TestLoadFileReadsNestedYAML 验证嵌套 YAML 配置可以覆盖默认值。
@@ -89,6 +93,12 @@ rag:
   chunk_index: yaml_chunks
 skill:
   max_count: 12
+mcp:
+  tools_cache_ttl: 10m
+  discover_timeout: 3s
+  fail_cooldown: 1m
+  assemble_budget: 12s
+  assemble_concurrency: 2
 `)
 
 	cfg, err := config.LoadFile(path)
@@ -128,6 +138,10 @@ skill:
 	}
 	if cfg.Skill.MaxCount != 12 {
 		t.Fatalf("cfg skill = %#v, want max_count=12", cfg.Skill)
+	}
+	if cfg.MCP.ToolsCacheTTL != "10m" || cfg.MCP.DiscoverTimeout != "3s" || cfg.MCP.FailCooldown != "1m" ||
+		cfg.MCP.AssembleBudget != "12s" || cfg.MCP.AssembleConcurrency != 2 {
+		t.Fatalf("cfg mcp = %#v, want yaml overrides", cfg.MCP)
 	}
 }
 
@@ -172,6 +186,11 @@ func TestLoadFileEnvOverridesYAML(t *testing.T) {
 	t.Setenv("RAG_CHUNK_INDEX", "env_chunks")
 	t.Setenv("RAG_EMBEDDING_BATCH_SIZE", "6")
 	t.Setenv("SKILL_MAX_COUNT", "9")
+	t.Setenv("MCP_TOOLS_CACHE_TTL", "15m")
+	t.Setenv("MCP_DISCOVER_TIMEOUT", "2s")
+	t.Setenv("MCP_FAIL_COOLDOWN", "45s")
+	t.Setenv("MCP_ASSEMBLE_BUDGET", "6s")
+	t.Setenv("MCP_ASSEMBLE_CONCURRENCY", "3")
 
 	path := writeConfig(t, `
 app:
@@ -235,6 +254,10 @@ llm:
 	}
 	if cfg.Skill.MaxCount != 9 {
 		t.Fatalf("env override skill failed: %#v", cfg.Skill)
+	}
+	if cfg.MCP.ToolsCacheTTL != "15m" || cfg.MCP.DiscoverTimeout != "2s" || cfg.MCP.FailCooldown != "45s" ||
+		cfg.MCP.AssembleBudget != "6s" || cfg.MCP.AssembleConcurrency != 3 {
+		t.Fatalf("env override mcp failed: %#v", cfg.MCP)
 	}
 }
 

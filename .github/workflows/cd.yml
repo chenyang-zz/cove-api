@@ -3,16 +3,15 @@ name: CD
 on:
   push:
     branches: [main]
-    tags:
-      - "v*.*.*"
   workflow_dispatch:
 
+# 部署中的工作流不能被后续推送取消，避免远程替换停留在中间状态。
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: cove-production-workflow
+  cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
@@ -26,9 +25,78 @@ jobs:
     name: CI Quality Gate
     uses: ./.github/workflows/ci.yml
 
+  prepare-version:
+    name: Calculate Semantic Version
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    outputs:
+      has_release: ${{ steps.version.outputs.has_release }}
+      version: ${{ steps.version.outputs.version }}
+      minor: ${{ steps.version.outputs.minor }}
+      major: ${{ steps.version.outputs.major }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Calculate semantic version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 手动从非 main 分支触发时只构建部署，不创建指向该分支的正式版本。
+          if test "$GITHUB_REF" != "refs/heads/main"; then
+            printf 'has_release=false\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          previous_tag=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | sed -n '1p')
+          if test -n "$previous_tag"; then
+            commit_range="${previous_tag}..HEAD"
+          else
+            commit_range="HEAD"
+          fi
+          messages=$(git log --format='%s%n%b%n---END-COMMIT---' "$commit_range")
+
+          bump=""
+          if printf '%s\n' "$messages" | grep -Eiq '(^|[[:space:]])BREAKING[ -]CHANGE:' \
+            || printf '%s\n' "$messages" | grep -Eiq '^[[:alpha:]]+(\([^)]+\))?!:'; then
+            bump=major
+          elif printf '%s\n' "$messages" | grep -Eiq '^feat(\([^)]+\))?:'; then
+            bump=minor
+          elif printf '%s\n' "$messages" | grep -Eiq '^(fix|perf|revert)(\([^)]+\))?:'; then
+            bump=patch
+          fi
+
+          if test -z "$bump"; then
+            echo 'No Conventional Commit requiring a release was found.'
+            printf 'has_release=false\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if test -z "$previous_tag"; then
+            version=0.1.0
+          else
+            current="${previous_tag#v}"
+            IFS=. read -r major minor patch <<< "$current"
+            case "$bump" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              patch) patch=$((patch + 1)) ;;
+            esac
+            version="${major}.${minor}.${patch}"
+          fi
+
+          printf 'has_release=true\n' >> "$GITHUB_OUTPUT"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'minor=%s.%s\n' "$major" "$minor" >> "$GITHUB_OUTPUT"
+          printf 'major=%s\n' "$major" >> "$GITHUB_OUTPUT"
+
   build-and-push:
     name: Build and Push ${{ matrix.service }}
-    needs: ci-gate
+    needs: prepare-version
     runs-on: ubuntu-latest
     environment: production
     strategy:
@@ -75,11 +143,14 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
           tags: |
             type=raw,value=${{ env.IMAGE_TAG }}
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ needs.prepare-version.outputs.version }},enable=${{ needs.prepare-version.outputs.has_release == 'true' }}
+            type=raw,value=${{ needs.prepare-version.outputs.minor }},enable=${{ needs.prepare-version.outputs.has_release == 'true' }}
+            type=raw,value=${{ needs.prepare-version.outputs.major }},enable=${{ needs.prepare-version.outputs.has_release == 'true' }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.prepare-version.outputs.version || github.sha }}
 
       # Buildx 以同一构建产物为两个 registry 打 tag；任一推送失败会阻止后续部署。
       - name: Build and push image to Alibaba Cloud and GHCR
@@ -93,17 +164,48 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  publish-release:
+    name: Publish Semantic Release
+    needs: [prepare-version, build-and-push]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        if: needs.prepare-version.outputs.has_release == 'true'
+        with:
+          fetch-depth: 0
+
+      - name: Create Git tag and GitHub Release
+        if: needs.prepare-version.outputs.has_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.prepare-version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${RELEASE_VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "Release $tag" "$GITHUB_SHA"
+          git push origin "$tag"
+          gh release create "$tag" --target "$GITHUB_SHA" --generate-notes --title "$tag"
+
+      - name: Skip GitHub Release
+        if: needs.prepare-version.outputs.has_release != 'true'
+        run: echo 'No Conventional Commit requiring a release was found.'
+
   deploy:
     name: Deploy API and Worker
-    needs: build-and-push
+    needs: publish-release
     runs-on: ubuntu-latest
     environment: production
+    concurrency:
+      group: cove-production-deploy
+      cancel-in-progress: false
     env:
       DEPLOY_COMPOSE_DIR: ${{ secrets.DEPLOY_COMPOSE_DIR || '/opt/cove' }}
       DEPLOY_ALIYUN_USERNAME: ${{ secrets.DEPLOY_ALIYUN_USERNAME }}
       DEPLOY_ALIYUN_PASSWORD: ${{ secrets.DEPLOY_ALIYUN_PASSWORD }}
     steps:
-      # 仅输出 GitHub Runner 实际收到的 SSH 主机公钥指纹，用于排查 fingerprint 不匹配。
       - name: Diagnose SSH host key fingerprint
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -166,13 +268,73 @@ jobs:
               previous_tag=$(tr -d '\r\n' < "$state_file")
             fi
 
+            running_tag() {
+              service="$1"
+              container_id=$(compose ps -q "$service")
+              test -n "$container_id" || return 1
+              image=$(docker inspect --format '{{.Config.Image}}' "$container_id")
+              prefix="$ALIYUN_REGISTRY/$ALIYUN_NAMESPACE/cove-$service:"
+              case "$image" in
+                "$prefix"*) printf '%s\n' "${image#"$prefix"}" ;;
+                *) return 1 ;;
+              esac
+            }
+
+            # 首次切换时把已运行的同一 SHA 记录为回滚版本，拒绝覆盖未知或版本漂移的容器。
+            if test -z "$previous_tag"; then
+              api_tag=$(running_tag api || true)
+              worker_tag=$(running_tag worker || true)
+              if test -n "$api_tag" || test -n "$worker_tag"; then
+                test -n "$api_tag" && test -n "$worker_tag" || fail "both api and worker must be running before state bootstrap"
+                test "$api_tag" = "$worker_tag" || fail "api and worker are not running the same image tag"
+                printf '%s' "$api_tag" | grep -Eq '^[0-9a-f]{40}$' || fail "running image tag is not an immutable SHA"
+                previous_tag="$api_tag"
+                mkdir -p "$state_dir"
+                printf '%s\n' "$previous_tag" > "$state_file.tmp"
+                mv "$state_file.tmp" "$state_file"
+                echo "Bootstrapped rollback state from running image: $previous_tag"
+              fi
+            fi
+
             rollback() {
               if test -z "$previous_tag"; then
                 echo "No previous release is recorded; skipping rollback." >&2
                 return
               fi
-              echo "Rolling back to $previous_tag" >&2
-              IMAGE_TAG="$previous_tag" compose config >/dev/null && IMAGE_TAG="$previous_tag" compose up -d --no-build --no-deps api worker || true
+              echo "Rolling back API and worker to $previous_tag" >&2
+              IMAGE_TAG="$previous_tag" compose config >/dev/null \
+                && IMAGE_TAG="$previous_tag" compose up -d --no-build --no-deps --force-recreate worker api \
+                || true
+            }
+
+            diagnose() {
+              service="$1"
+              container_id=$(compose ps -q "$service" || true)
+              echo "--- $service container state ---" >&2
+              if test -n "$container_id"; then
+                docker inspect --format '{{json .State}}' "$container_id" >&2 || true
+              fi
+              echo "--- $service recent logs ---" >&2
+              compose logs --tail 200 "$service" >&2 || true
+            }
+
+            wait_for_healthy() {
+              service="$1"
+              for attempt in $(seq 1 60); do
+                container_id=$(compose ps -q "$service" || true)
+                if test -n "$container_id"; then
+                  health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null || true)
+                  if test "$health" = "healthy"; then
+                    return 0
+                  fi
+                  echo "Waiting for $service health ($attempt/60): ${health:-missing}" >&2
+                else
+                  echo "Waiting for $service container ($attempt/60)" >&2
+                fi
+                sleep 5
+              done
+              diagnose "$service"
+              return 1
             }
 
             # 先验证变量替换后的配置，再从阿里云拉取指定 SHA 镜像，避免 compose 回退到本地构建。
@@ -185,29 +347,15 @@ jobs:
               rollback
               fail "failed to pull candidate images from Alibaba Cloud"
             fi
-            if ! compose up -d --no-build --no-deps api worker; then
+
+            # worker 先替换并通过健康检查，避免 API 已切换但后台任务进程不可用。
+            if ! compose up -d --no-build --no-deps --force-recreate worker || ! wait_for_healthy worker; then
               rollback
-              fail "failed to start candidate containers"
+              fail "worker candidate did not become healthy"
             fi
-
-            api_id=$(compose ps -q api)
-            worker_id=$(compose ps -q worker)
-            test -n "$api_id" || { rollback; fail "api container was not created"; }
-            test -n "$worker_id" || { rollback; fail "worker container was not created"; }
-
-            healthy=false
-            for attempt in $(seq 1 18); do
-              api_health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$api_id")
-              worker_running=$(docker inspect --format '{{.State.Running}}' "$worker_id")
-              if test "$api_health" = healthy && test "$worker_running" = true; then
-                healthy=true
-                break
-              fi
-              sleep 5
-            done
-            if test "$healthy" != true; then
+            if ! compose up -d --no-build --no-deps --force-recreate api || ! wait_for_healthy api; then
               rollback
-              fail "candidate release did not become healthy"
+              fail "api candidate did not become healthy"
             fi
 
             mkdir -p "$state_dir"

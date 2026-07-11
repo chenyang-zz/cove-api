@@ -1,8 +1,10 @@
 name: CD
 
+# 仅在推送语义化版本 tag 时进入 CD；生产发版由人工/流程打 tag 驱动，而非 main 每次 push。
 on:
   push:
-    branches: [main]
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
 
 # 部署中的工作流不能被后续推送取消，避免远程替换停留在中间状态。
@@ -17,6 +19,7 @@ permissions:
 env:
   ALIYUN_REGISTRY: ${{ vars.ALIYUN_REGISTRY }}
   ALIYUN_NAMESPACE: ${{ vars.ALIYUN_NAMESPACE }}
+  # 部署仍使用不可变 commit SHA；版本号来自 tag，用于镜像附加标签与 Release。
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
@@ -26,7 +29,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   prepare-version:
-    name: Calculate Semantic Version
+    name: Resolve Release Version
     needs: ci-gate
     runs-on: ubuntu-latest
     outputs:
@@ -34,68 +37,44 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       minor: ${{ steps.version.outputs.minor }}
       major: ${{ steps.version.outputs.major }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Calculate semantic version
+      - name: Resolve version from tag
         id: version
         shell: bash
         run: |
           set -euo pipefail
 
-          # 手动从非 main 分支触发时只构建部署，不创建指向该分支的正式版本。
-          if test "$GITHUB_REF" != "refs/heads/main"; then
-            printf 'has_release=false\n' >> "$GITHUB_OUTPUT"
+          # tag 推送：直接解析 refs/tags/vX.Y.Z
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            tag="${GITHUB_REF_NAME}"
+            if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Unsupported tag format: $tag (expect vX.Y.Z)"
+              exit 1
+            fi
+            version="${tag#v}"
+            IFS=. read -r major minor patch <<< "$version"
+            printf 'has_release=true\n' >> "$GITHUB_OUTPUT"
+            printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+            printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+            printf 'minor=%s.%s\n' "$major" "$minor" >> "$GITHUB_OUTPUT"
+            printf 'major=%s\n' "$major" >> "$GITHUB_OUTPUT"
+            echo "Release from tag $tag -> version=$version"
             exit 0
           fi
 
-          previous_tag=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | sed -n '1p')
-          if test -n "$previous_tag"; then
-            commit_range="${previous_tag}..HEAD"
-          else
-            commit_range="HEAD"
-          fi
-          messages=$(git log --format='%s%n%b%n---END-COMMIT---' "$commit_range")
-
-          bump=""
-          if printf '%s\n' "$messages" | grep -Eiq '(^|[[:space:]])BREAKING[ -]CHANGE:' \
-            || printf '%s\n' "$messages" | grep -Eiq '^[[:alpha:]]+(\([^)]+\))?!:'; then
-            bump=major
-          elif printf '%s\n' "$messages" | grep -Eiq '^feat(\([^)]+\))?:'; then
-            bump=minor
-          elif printf '%s\n' "$messages" | grep -Eiq '^(fix|perf|revert)(\([^)]+\))?:'; then
-            bump=patch
-          fi
-
-          if test -z "$bump"; then
-            echo 'No Conventional Commit requiring a release was found.'
-            printf 'has_release=false\n' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if test -z "$previous_tag"; then
-            major=0
-            minor=1
-            patch=0
-            version="${major}.${minor}.${patch}"
-          else
-            current="${previous_tag#v}"
-            IFS=. read -r major minor patch <<< "$current"
-            case "$bump" in
-              major) major=$((major + 1)); minor=0; patch=0 ;;
-              minor) minor=$((minor + 1)); patch=0 ;;
-              patch) patch=$((patch + 1)) ;;
-            esac
-            version="${major}.${minor}.${patch}"
-          fi
-
-          printf 'has_release=true\n' >> "$GITHUB_OUTPUT"
-          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
-          printf 'minor=%s.%s\n' "$major" "$minor" >> "$GITHUB_OUTPUT"
-          printf 'major=%s\n' "$major" >> "$GITHUB_OUTPUT"
+          # workflow_dispatch：无 tag，仅构建并按 SHA 部署，不发版号镜像标签。
+          echo "Manual dispatch without tag; deploy by SHA only."
+          printf 'has_release=false\n' >> "$GITHUB_OUTPUT"
+          printf 'tag=\n' >> "$GITHUB_OUTPUT"
+          printf 'version=\n' >> "$GITHUB_OUTPUT"
+          printf 'minor=\n' >> "$GITHUB_OUTPUT"
+          printf 'major=\n' >> "$GITHUB_OUTPUT"
 
   build-and-push:
     name: Build and Push ${{ matrix.service }}
@@ -146,10 +125,10 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
           tags: |
             type=raw,value=${{ env.IMAGE_TAG }}
-            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=${{ needs.prepare-version.outputs.version }},enable=${{ needs.prepare-version.outputs.has_release == 'true' }}
             type=raw,value=${{ needs.prepare-version.outputs.minor }},enable=${{ needs.prepare-version.outputs.has_release == 'true' }}
             type=raw,value=${{ needs.prepare-version.outputs.major }},enable=${{ needs.prepare-version.outputs.has_release == 'true' }}
+            type=raw,value=latest,enable=${{ needs.prepare-version.outputs.has_release == 'true' }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -168,33 +147,28 @@ jobs:
           cache-to: type=gha,mode=max
 
   publish-release:
-    name: Publish Semantic Release
+    name: Publish GitHub Release
     needs: [prepare-version, build-and-push]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        if: needs.prepare-version.outputs.has_release == 'true'
-        with:
-          fetch-depth: 0
-
-      - name: Create Git tag and GitHub Release
+      # tag 已由推送触发 CD，这里只补建 GitHub Release（若尚未创建）。
+      - name: Ensure GitHub Release for tag
         if: needs.prepare-version.outputs.has_release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ needs.prepare-version.outputs.version }}
+          RELEASE_TAG: ${{ needs.prepare-version.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
-          tag="v${RELEASE_VERSION}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$tag" -m "Release $tag" "$GITHUB_SHA"
-          git push origin "$tag"
-          gh release create "$tag" --target "$GITHUB_SHA" --generate-notes --title "$tag"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "GitHub Release $RELEASE_TAG already exists."
+            exit 0
+          fi
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --generate-notes --title "$RELEASE_TAG"
 
       - name: Skip GitHub Release
         if: needs.prepare-version.outputs.has_release != 'true'
-        run: echo 'No Conventional Commit requiring a release was found.'
+        run: echo 'No version tag on this run; skip GitHub Release.'
 
   deploy:
     name: Deploy API and Worker

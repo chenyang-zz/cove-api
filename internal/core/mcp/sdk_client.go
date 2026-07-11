@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -16,9 +18,30 @@ type SDKToolClient struct {
 	httpClient *http.Client
 }
 
-// NewSDKToolClient 创建 SDK client；httpClient 为空时由 transport 使用默认客户端。
+// NewSDKToolClient 创建 SDK client；httpClient 为空时使用带建连超时的默认客户端。
+//
+// 默认客户端不设置整体 Client.Timeout，避免截断可能较长的 CallTool 请求；
+// 发现路径的上界由 Service.DiscoverTimeout 通过 context 控制。
 func NewSDKToolClient(httpClient *http.Client) *SDKToolClient {
+	if httpClient == nil {
+		httpClient = defaultHTTPClient()
+	}
 	return &SDKToolClient{httpClient: httpClient}
+}
+
+// defaultHTTPClient 返回带 TCP/TLS 建连超时的 HTTP 客户端。
+//
+// 不设置 Client.Timeout，以便工具调用可按请求 ctx 运行较长时间。
+func defaultHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{
+		Timeout:   DefaultDialTimeout,
+		KeepAlive: 30 * time.Second,
+	}).DialContext
+	if transport.TLSHandshakeTimeout <= 0 || transport.TLSHandshakeTimeout > DefaultDialTimeout {
+		transport.TLSHandshakeTimeout = DefaultDialTimeout
+	}
+	return &http.Client{Transport: transport}
 }
 
 // ListTools 建立一次临时 session，读取工具列表后立即关闭连接。
@@ -134,7 +157,7 @@ func (c *SDKToolClient) transport(server ServerConfig) (sdkmcp.Transport, error)
 }
 
 func (c *SDKToolClient) authHTTPClient(server ServerConfig) *http.Client {
-	base := http.DefaultClient
+	base := defaultHTTPClient()
 	if c != nil && c.httpClient != nil {
 		base = c.httpClient
 	}

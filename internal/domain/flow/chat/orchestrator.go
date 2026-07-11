@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"log/slog"
@@ -149,6 +150,10 @@ func (o *Orchestrator) historyMessages(ctx context.Context, userID uuid.UUID, co
 	return messages, nil
 }
 
+// toolRegistry 构建可用于当前用户的工具注册表。
+// 1. 内置工具：默认启用，除非用户显式禁用。
+// 2. 知识库工具：仅在用户启用知识库时加载，默认启用，除非用户显式禁用。
+// 3. MCP 工具：仅在用户启用 MCP 服务时加载，默认启用，除非用户显式禁用。
 func (o *Orchestrator) toolRegistry(ctx context.Context, userID uuid.UUID, kbIDs []uuid.UUID) (*coretool.Registry, func() error, error) {
 	if o.svcCtx == nil {
 		return coretool.NewRegistry(), nil, nil
@@ -208,8 +213,8 @@ func (o *Orchestrator) toolRegistry(ctx context.Context, userID uuid.UUID, kbIDs
 	leases := make([]*coremcp.OpenedTools, 0, len(servers))
 	closeAll := func() error {
 		var errs []error
-		for index := len(leases) - 1; index >= 0; index-- {
-			if closeErr := leases[index].Close(); closeErr != nil {
+		for _, lease := range slices.Backward(leases) {
+			if closeErr := lease.Close(); closeErr != nil {
 				errs = append(errs, closeErr)
 			}
 		}
@@ -262,6 +267,7 @@ func enabledByToolConfig(rows []*models.ToolConfig, toolKey string) (bool, bool)
 	return false, false
 }
 
+// warnMCPServer 记录 MCP 服务相关的警告日志，包含用户 ID、服务 ID 和错误信息。
 func (o *Orchestrator) warnMCPServer(ctx context.Context, userID uuid.UUID, serverID uuid.UUID, message string, err error) {
 	if o == nil || o.log == nil {
 		return

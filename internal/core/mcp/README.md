@@ -30,18 +30,20 @@
 
 ```go
 mcpService := mcp.NewService(mcp.Options{
-    Client:        customClient,   // 可选，默认 SDKToolClient
-    SessionOpener: customOpener,   // 可选，默认复用 client
-    Cache:         customCache,    // 可选，默认 MemoryToolCache
-    TTL:           10 * time.Minute,
+    Client:          customClient,   // 可选，默认 SDKToolClient
+    SessionOpener:   customOpener,   // 可选，默认复用 client
+    Cache:           customCache,    // 可选，默认 MemoryToolCache
+    TTL:             10 * time.Minute,
+    DiscoverTimeout: 5 * time.Second,  // 可选，发现路径超时
+    FailCooldown:    30 * time.Second, // 可选，失败冷却
 })
 ```
 
 | 方法 | 说明 |
 |------|------|
-| `BuildToolList(ctx, server)` | 返回有效缓存或同步刷新远端工具列表 |
-| `RefreshToolList(ctx, server)` | 跳过缓存，强制刷新并更新运行时缓存 |
-| `OpenTools(ctx, server)` | 返回 `OpenedTools` lease（延迟连接） |
+| `BuildToolList(ctx, server)` | 返回有效缓存或同步刷新远端工具列表；遵守发现超时与失败冷却 |
+| `RefreshToolList(ctx, server)` | 跳过缓存与冷却，强制刷新并更新运行时缓存（仍受发现超时约束） |
+| `OpenTools(ctx, server)` | 返回 `OpenedTools` lease（延迟连接）；失败时可 stale-if-error |
 | `CacheStatus(ctx, server)` | 查询当前缓存是否有效及过期时间 |
 
 ### `ToolInfo` / `ToolMeta`
@@ -114,11 +116,11 @@ type ToolCache interface {
 
 - 传输协议：`TransportSSE`（SSE）/ `TransportStreamableHTTP`（默认）
 - 认证：`AuthNone` / `AuthBearer`（Header）/ `AuthAPIKey`（Header 或 Query）
-- 未传 `http.Client` 时使用 `http.DefaultClient`
+- 未传 `http.Client` 时使用带 TCP/TLS 建连超时的默认客户端（**不设**整体 `Client.Timeout`，避免截断长 `CallTool`）
 
 ### `MemoryToolCache`
 
-基于 `sync.RWMutex` 的内存缓存实现。`Valid` 同时校验指纹（`Fingerprint(server)`）和过期时间。
+基于 `sync.RWMutex` 的内存缓存实现。`Valid` 同时校验指纹（`Fingerprint(server)`）和过期时间。`Stale` 忽略 TTL，仅校验指纹与工具非空，供发现失败时的降级复用。
 
 ### `OpenedTools`
 
@@ -138,7 +140,23 @@ type ToolCache interface {
 ```go
 // 缓存命中判断
 Valid(server, entry) = (entry.Fingerprint == Fingerprint(server)) && (now < entry.ExpiresAt)
+// 失败降级判断（忽略 TTL）
+Stale(server, entry) = (entry.Fingerprint == Fingerprint(server)) && len(entry.Tools) > 0
 ```
+
+## 发现超时与失败冷却
+
+对话组装等同步路径不能依赖操作系统级 ~60s 连接超时。`Service` 在核心层统一保护：
+
+| 机制 | 默认 | 行为 |
+|------|------|------|
+| `DiscoverTimeout` | 5s | `OpenSession` + `ListTools` / `ListTools` 临时 session 的上界 |
+| `FailCooldown` | 30s | 发现失败后跳过远端探测；指纹变更或冷却到期后重试 |
+| stale-if-error | — | 失败或冷却时，若存在指纹匹配的 runtime tools（可已过期），仍返回 lazy lease |
+
+- **CallTool** 不受 `DiscoverTimeout` 约束，继续使用调用方 `context`
+- **RefreshToolList** 忽略失败冷却（用户显式同步），但仍受 `DiscoverTimeout` 限制
+- 成功发现后清除该 server 的失败冷却
 
 ## 安全传输
 

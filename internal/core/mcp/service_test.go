@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,13 +12,20 @@ import (
 )
 
 type fakeToolClient struct {
-	calls int
-	tools []ToolInfo
-	err   error
+	calls   int
+	tools   []ToolInfo
+	err     error
+	block   bool
+	lastCtx context.Context
 }
 
 func (c *fakeToolClient) ListTools(ctx context.Context, server ServerConfig) ([]ToolInfo, error) {
 	c.calls++
+	c.lastCtx = ctx
+	if c.block {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	if c.err != nil {
 		return nil, c.err
 	}
@@ -70,10 +78,17 @@ type fakeSessionOpener struct {
 	session ToolSession
 	err     error
 	calls   int
+	block   bool
+	lastCtx context.Context
 }
 
-func (o *fakeSessionOpener) OpenSession(context.Context, ServerConfig) (ToolSession, error) {
+func (o *fakeSessionOpener) OpenSession(ctx context.Context, _ ServerConfig) (ToolSession, error) {
 	o.calls++
+	o.lastCtx = ctx
+	if o.block {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	if o.err != nil {
 		return nil, o.err
 	}
@@ -433,3 +448,231 @@ func TestMetasFromToolsStripsRuntimeOnlyFields(t *testing.T) {
 		t.Fatalf("metas = %#v, want %#v", got, want)
 	}
 }
+
+// TestServiceOpenToolsRespectsDiscoverTimeout 验证发现路径在 DiscoverTimeout 内失败，不无限阻塞。
+func TestServiceOpenToolsRespectsDiscoverTimeout(t *testing.T) {
+	server := ServerConfig{ID: uuid.New()}
+	opener := &fakeSessionOpener{block: true}
+	service := NewService(Options{
+		SessionOpener:   opener,
+		DiscoverTimeout: 30 * time.Millisecond,
+		FailCooldown:     time.Minute,
+	})
+
+	start := time.Now()
+	_, err := service.OpenTools(context.Background(), server)
+	elapsed := time.Since(start)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("OpenTools error = %v, want context.DeadlineExceeded", err)
+	}
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("OpenTools elapsed = %v, want roughly DiscoverTimeout", elapsed)
+	}
+	if opener.calls != 1 {
+		t.Fatalf("opener calls = %d, want 1", opener.calls)
+	}
+}
+
+// TestServiceOpenToolsFailCooldownSkipsRemote 验证发现失败后冷却期内不再访问远端。
+func TestServiceOpenToolsFailCooldownSkipsRemote(t *testing.T) {
+	server := ServerConfig{ID: uuid.New()}
+	want := errors.New("offline")
+	opener := &fakeSessionOpener{err: want}
+	service := NewService(Options{
+		SessionOpener:   opener,
+		DiscoverTimeout: time.Second,
+		FailCooldown:    time.Minute,
+	})
+
+	_, err := service.OpenTools(context.Background(), server)
+	if !errors.Is(err, want) {
+		t.Fatalf("first OpenTools error = %v, want %v", err, want)
+	}
+	_, err = service.OpenTools(context.Background(), server)
+	if err == nil || !strings.Contains(err.Error(), "fail cooldown") {
+		t.Fatalf("second OpenTools error = %v, want fail cooldown", err)
+	}
+	if opener.calls != 1 {
+		t.Fatalf("opener calls = %d, want 1 after cooldown", opener.calls)
+	}
+}
+
+// TestServiceOpenToolsRetriesAfterFailCooldown 验证冷却结束后会重新探测远端。
+func TestServiceOpenToolsRetriesAfterFailCooldown(t *testing.T) {
+	server := ServerConfig{ID: uuid.New()}
+	now := time.Now()
+	opener := &fakeSessionOpener{err: errors.New("offline")}
+	service := NewService(Options{
+		SessionOpener:   opener,
+		DiscoverTimeout: time.Second,
+		FailCooldown:    10 * time.Second,
+		Now:             func() time.Time { return now },
+	})
+
+	if _, err := service.OpenTools(context.Background(), server); err == nil {
+		t.Fatal("first OpenTools error = nil, want offline")
+	}
+	now = now.Add(11 * time.Second)
+	if _, err := service.OpenTools(context.Background(), server); err == nil {
+		t.Fatal("second OpenTools error = nil, want offline after cooldown")
+	}
+	if opener.calls != 2 {
+		t.Fatalf("opener calls = %d, want 2 after cooldown expired", opener.calls)
+	}
+}
+
+// TestServiceOpenToolsReturnsStaleOnDiscoverFailure 验证远端失败时复用指纹匹配的过期 runtime 工具列表。
+func TestServiceOpenToolsReturnsStaleOnDiscoverFailure(t *testing.T) {
+	server := ServerConfig{ID: uuid.New(), URL: "https://example.com/mcp"}
+	staleTools := []ToolInfo{{Name: "stale", InputSchema: map[string]any{"type": "object"}}}
+	cache := &fakeToolCache{
+		found: true,
+		entry: CacheEntry{
+			Fingerprint: Fingerprint(server),
+			ExpiresAt:   time.Now().Add(-time.Minute),
+			Tools:       staleTools,
+		},
+	}
+	opener := &fakeSessionOpener{err: errors.New("offline")}
+	service := NewService(Options{SessionOpener: opener, Cache: cache, FailCooldown: time.Minute})
+
+	opened, err := service.OpenTools(context.Background(), server)
+	if err != nil {
+		t.Fatalf("OpenTools error = %v, want stale success", err)
+	}
+	if opener.calls != 1 {
+		t.Fatalf("opener calls = %d, want 1 for first failure", opener.calls)
+	}
+	if got := opened.Tools(); len(got) != 1 || got[0].Name != "stale" {
+		t.Fatalf("tools = %#v, want stale tools", got)
+	}
+
+	// 冷却期内应直接返回 stale，不再打远端。
+	opened, err = service.OpenTools(context.Background(), server)
+	if err != nil {
+		t.Fatalf("cooldown OpenTools error = %v, want stale success", err)
+	}
+	if opener.calls != 1 {
+		t.Fatalf("opener calls = %d, want still 1 during cooldown", opener.calls)
+	}
+	if got := opened.Tools(); len(got) != 1 || got[0].Name != "stale" {
+		t.Fatalf("cooldown tools = %#v, want stale tools", got)
+	}
+}
+
+// TestServiceOpenToolsClearsFailCooldownOnSuccess 验证发现成功后会清除失败冷却，后续可立即再次发现。
+func TestServiceOpenToolsClearsFailCooldownOnSuccess(t *testing.T) {
+	server := ServerConfig{ID: uuid.New()}
+	session := &fakeToolSession{tools: []ToolInfo{{Name: "fresh"}}}
+	opener := &fakeSessionOpener{err: errors.New("offline")}
+	now := time.Now()
+	// 使用空缓存，避免成功后命中 TTL 掩盖冷却状态。
+	cache := &fakeToolCache{}
+	service := NewService(Options{
+		SessionOpener: opener,
+		Cache:         cache,
+		FailCooldown:  10 * time.Second,
+		Now:           func() time.Time { return now },
+	})
+
+	if _, err := service.OpenTools(context.Background(), server); err == nil {
+		t.Fatal("first OpenTools error = nil, want offline")
+	}
+	// 冷却结束后成功发现。
+	now = now.Add(11 * time.Second)
+	opener.err = nil
+	opener.session = session
+	// fakeToolCache.Set 不会让后续 Get 命中，便于验证 clearFailure 后仍会探测。
+	if _, err := service.OpenTools(context.Background(), server); err != nil {
+		t.Fatalf("recovery OpenTools error = %v, want nil", err)
+	}
+	// 若冷却未清除，下一次会因 cooldown 直接失败且 opener 不再增加。
+	opener.err = errors.New("offline-again")
+	if _, err := service.OpenTools(context.Background(), server); err == nil {
+		t.Fatal("post-success OpenTools error = nil, want offline-again from new probe")
+	}
+	if opener.calls != 3 {
+		t.Fatalf("opener calls = %d, want 3 (fail, success, fail)", opener.calls)
+	}
+}
+
+// TestServiceRefreshToolListBypassesFailCooldown 验证手动刷新忽略失败冷却仍访问远端。
+func TestServiceRefreshToolListBypassesFailCooldown(t *testing.T) {
+	server := ServerConfig{ID: uuid.New()}
+	client := &fakeToolClient{err: errors.New("offline")}
+	service := NewService(Options{Client: client, FailCooldown: time.Minute, DiscoverTimeout: time.Second})
+
+	if _, err := service.BuildToolList(context.Background(), server); err == nil {
+		t.Fatal("BuildToolList error = nil, want offline")
+	}
+	if client.calls != 1 {
+		t.Fatalf("client calls after build = %d, want 1", client.calls)
+	}
+	// 冷却期内 Build 不应再打远端。
+	if _, err := service.BuildToolList(context.Background(), server); err == nil {
+		t.Fatal("cooldown BuildToolList error = nil, want cooldown error")
+	}
+	if client.calls != 1 {
+		t.Fatalf("client calls during cooldown = %d, want 1", client.calls)
+	}
+
+	client.err = nil
+	client.tools = []ToolInfo{{Name: "fresh"}}
+	tools, err := service.RefreshToolList(context.Background(), server)
+	if err != nil {
+		t.Fatalf("RefreshToolList error = %v, want nil", err)
+	}
+	if client.calls != 2 || len(tools) != 1 || tools[0].Name != "fresh" {
+		t.Fatalf("RefreshToolList calls/tools = %d/%#v, want force remote", client.calls, tools)
+	}
+}
+
+// TestServiceBuildToolListRespectsDiscoverTimeout 验证 ListTools 发现路径遵守 DiscoverTimeout。
+func TestServiceBuildToolListRespectsDiscoverTimeout(t *testing.T) {
+	client := &fakeToolClient{block: true}
+	service := NewService(Options{Client: client, DiscoverTimeout: 30 * time.Millisecond})
+
+	start := time.Now()
+	_, err := service.BuildToolList(context.Background(), ServerConfig{ID: uuid.New()})
+	elapsed := time.Since(start)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("BuildToolList error = %v, want context.DeadlineExceeded", err)
+	}
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("BuildToolList elapsed = %v, want roughly DiscoverTimeout", elapsed)
+	}
+}
+
+// TestServiceFailCooldownClearsWhenFingerprintChanges 验证连接配置变更后旧失败冷却不再生效。
+func TestServiceFailCooldownClearsWhenFingerprintChanges(t *testing.T) {
+	server := ServerConfig{ID: uuid.New(), URL: "https://a.example/mcp"}
+	opener := &fakeSessionOpener{err: errors.New("offline")}
+	service := NewService(Options{SessionOpener: opener, FailCooldown: time.Minute})
+
+	if _, err := service.OpenTools(context.Background(), server); err == nil {
+		t.Fatal("first OpenTools error = nil, want offline")
+	}
+	server.URL = "https://b.example/mcp"
+	if _, err := service.OpenTools(context.Background(), server); err == nil {
+		t.Fatal("OpenTools after fingerprint change error = nil, want offline from new probe")
+	}
+	if opener.calls != 2 {
+		t.Fatalf("opener calls = %d, want 2 after fingerprint change", opener.calls)
+	}
+}
+
+// TestStaleRequiresMatchingFingerprintAndTools 验证 Stale 辅助函数的匹配条件。
+func TestStaleRequiresMatchingFingerprintAndTools(t *testing.T) {
+	server := ServerConfig{ID: uuid.New(), URL: "https://example.com/mcp"}
+	if Stale(server, CacheEntry{Fingerprint: Fingerprint(server)}) {
+		t.Fatal("Stale(empty tools) = true, want false")
+	}
+	if Stale(server, CacheEntry{Fingerprint: "other", Tools: []ToolInfo{{Name: "x"}}}) {
+		t.Fatal("Stale(mismatched fp) = true, want false")
+	}
+	if !Stale(server, CacheEntry{Fingerprint: Fingerprint(server), Tools: []ToolInfo{{Name: "x"}}}) {
+		t.Fatal("Stale(match) = false, want true")
+	}
+}
+
+

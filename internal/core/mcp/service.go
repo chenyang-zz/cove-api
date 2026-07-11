@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"time"
 )
 
@@ -26,27 +28,49 @@ type SessionOpener interface {
 
 // Options 配置 MCP 工具发现、会话建立和运行时缓存依赖。
 type Options struct {
-	Client        ToolClient
-	SessionOpener SessionOpener
-	Cache         ToolCache
-	TTL           time.Duration
-	Now           func() time.Time
+	Client          ToolClient
+	SessionOpener   SessionOpener
+	Cache           ToolCache
+	TTL             time.Duration
+	DiscoverTimeout time.Duration
+	FailCooldown    time.Duration
+	Now             func() time.Time
+}
+
+// failState 记录单个 MCP server 最近一次发现失败的冷却信息。
+type failState struct {
+	until       time.Time
+	message     string
+	fingerprint string
 }
 
 // Service 统一管理 MCP 工具发现缓存和单轮可复用工具会话。
 type Service struct {
-	client        ToolClient
-	sessionOpener SessionOpener
-	cache         ToolCache
-	ttl           time.Duration
-	now           func() time.Time
+	client          ToolClient
+	sessionOpener   SessionOpener
+	cache           ToolCache
+	ttl             time.Duration
+	discoverTimeout time.Duration
+	failCooldown    time.Duration
+	now             func() time.Time
+
+	failMu   sync.Mutex
+	failures map[string]failState
 }
 
-// NewService 创建 MCP 服务；未提供依赖时使用 SDK client、内存缓存和五分钟 TTL。
+// NewService 创建 MCP 服务；未提供依赖时使用 SDK client、内存缓存和默认超时/冷却。
 func NewService(options Options) *Service {
 	ttl := options.TTL
 	if ttl <= 0 {
 		ttl = DefaultTTL
+	}
+	discoverTimeout := options.DiscoverTimeout
+	if discoverTimeout <= 0 {
+		discoverTimeout = DefaultDiscoverTimeout
+	}
+	failCooldown := options.FailCooldown
+	if failCooldown <= 0 {
+		failCooldown = DefaultFailCooldown
 	}
 	now := options.Now
 	if now == nil {
@@ -57,7 +81,7 @@ func NewService(options Options) *Service {
 		cache = NewMemoryToolCache()
 	}
 	client := options.Client
-	defaultClient := NewSDKToolClient(nil)
+	defaultClient := NewSDKToolClient(defaultHTTPClient())
 	if client == nil {
 		client = defaultClient
 	}
@@ -70,36 +94,66 @@ func NewService(options Options) *Service {
 		}
 	}
 	return &Service{
-		client:        client,
-		sessionOpener: sessionOpener,
-		cache:         cache,
-		ttl:           ttl,
-		now:           now,
+		client:          client,
+		sessionOpener:   sessionOpener,
+		cache:           cache,
+		ttl:             ttl,
+		discoverTimeout: discoverTimeout,
+		failCooldown:    failCooldown,
+		now:             now,
+		failures:        map[string]failState{},
 	}
 }
 
 // BuildToolList 返回 MCP 工具列表；有效缓存直接命中，否则同步刷新远端。
+//
+// 发现路径受 DiscoverTimeout 限制。失败后进入 FailCooldown：冷却期内不再访问远端，
+// 若存在指纹匹配的过期 runtime 缓存则返回该 stale 列表。
 func (s *Service) BuildToolList(ctx context.Context, server ServerConfig) ([]ToolInfo, error) {
 	s = s.withDefaults()
-	key := cacheKey(server)
-	if entry, ok, err := s.cache.Get(ctx, key); err != nil {
-		return nil, err
-	} else if ok && s.cache.Valid(server, entry) {
-		return cloneTools(entry.Tools), nil
-	}
-
-	return s.RefreshToolList(ctx, server)
-}
-
-// RefreshToolList 跳过 TTL 缓存并重新拉取远端 MCP 工具列表。
-//
-// 拉取成功后会更新运行时缓存；远端调用或缓存写入失败时返回对应错误。
-func (s *Service) RefreshToolList(ctx context.Context, server ServerConfig) ([]ToolInfo, error) {
-	s = s.withDefaults()
-	tools, err := s.client.ListTools(ctx, server)
+	entry, ok, err := s.cache.Get(ctx, cacheKey(server))
 	if err != nil {
 		return nil, err
 	}
+	if ok && s.cache.Valid(server, entry) {
+		return cloneTools(entry.Tools), nil
+	}
+	// 冷却期内直接复用 stale 或快速失败，避免再次阻塞对话/配置页。
+	if err := s.cooldownError(server); err != nil {
+		if tools, staleOK := staleTools(server, entry, ok); staleOK {
+			return tools, nil
+		}
+		return nil, err
+	}
+
+	tools, err := s.listToolsRemote(ctx, server)
+	if err != nil {
+		s.rememberFailure(server, err)
+		if tools, staleOK := staleTools(server, entry, ok); staleOK {
+			return tools, nil
+		}
+		return nil, err
+	}
+	s.clearFailure(server)
+	tools = cloneTools(tools)
+	if err := s.cache.Set(ctx, cacheKey(server), s.newEntry(server, tools)); err != nil {
+		return nil, err
+	}
+	return tools, nil
+}
+
+// RefreshToolList 跳过 TTL 缓存与失败冷却，强制重新拉取远端 MCP 工具列表。
+//
+// 仍受 DiscoverTimeout 约束。拉取成功后更新运行时缓存并清除失败冷却；
+// 远端调用或缓存写入失败时返回对应错误（不降级到 stale）。
+func (s *Service) RefreshToolList(ctx context.Context, server ServerConfig) ([]ToolInfo, error) {
+	s = s.withDefaults()
+	tools, err := s.listToolsRemote(ctx, server)
+	if err != nil {
+		s.rememberFailure(server, err)
+		return nil, err
+	}
+	s.clearFailure(server)
 	tools = cloneTools(tools)
 	if err := s.cache.Set(ctx, cacheKey(server), s.newEntry(server, tools)); err != nil {
 		return nil, err
@@ -110,7 +164,9 @@ func (s *Service) RefreshToolList(ctx context.Context, server ServerConfig) ([]T
 // OpenTools 返回一组可在本轮调用的 MCP 工具及其连接 lease。
 //
 // 有效 TTL 缓存会直接提供工具元数据，并把 session 建立延迟到首次 CallTool；缓存
-// 失效时会建立 session、刷新工具列表并复用该连接。调用方必须调用 Close。
+// 失效时会在 DiscoverTimeout 内建立 session、刷新工具列表并复用该连接。发现失败后
+// 进入 FailCooldown；若存在指纹匹配的 stale 工具列表则降级返回 lazy lease。
+// 调用方必须调用 Close。
 func (s *Service) OpenTools(ctx context.Context, server ServerConfig) (*OpenedTools, error) {
 	s = s.withDefaults()
 	entry, ok, err := s.cache.Get(ctx, cacheKey(server))
@@ -120,16 +176,23 @@ func (s *Service) OpenTools(ctx context.Context, server ServerConfig) (*OpenedTo
 	if ok && s.cache.Valid(server, entry) {
 		return newOpenedTools(server, entry.Tools, s.sessionOpener, nil), nil
 	}
+	// 冷却期内优先返回 stale tools，否则立即失败，避免再次等待发现超时。
+	if err := s.cooldownError(server); err != nil {
+		if tools, staleOK := staleTools(server, entry, ok); staleOK {
+			return newOpenedTools(server, tools, s.sessionOpener, nil), nil
+		}
+		return nil, err
+	}
 
-	session, err := s.sessionOpener.OpenSession(ctx, server)
+	session, tools, err := s.openAndList(ctx, server)
 	if err != nil {
+		s.rememberFailure(server, err)
+		if tools, staleOK := staleTools(server, entry, ok); staleOK {
+			return newOpenedTools(server, tools, s.sessionOpener, nil), nil
+		}
 		return nil, err
 	}
-	tools, err := session.ListTools(ctx)
-	if err != nil {
-		_ = session.Close()
-		return nil, err
-	}
+	s.clearFailure(server)
 	tools = cloneTools(tools)
 	if err := s.cache.Set(ctx, cacheKey(server), s.newEntry(server, tools)); err != nil {
 		_ = session.Close()
@@ -152,10 +215,97 @@ func (s *Service) CacheStatus(ctx context.Context, server ServerConfig) (CacheSt
 	return CacheStatus{Valid: false, Fingerprint: Fingerprint(server)}, nil
 }
 
+func (s *Service) listToolsRemote(ctx context.Context, server ServerConfig) ([]ToolInfo, error) {
+	discoverCtx, cancel := context.WithTimeout(ctx, s.discoverTimeout)
+	defer cancel()
+	return s.client.ListTools(discoverCtx, server)
+}
+
+// openAndList 在发现超时内建立 session 并列举工具；ListTools 失败时关闭 session。
+func (s *Service) openAndList(ctx context.Context, server ServerConfig) (ToolSession, []ToolInfo, error) {
+	discoverCtx, cancel := context.WithTimeout(ctx, s.discoverTimeout)
+	defer cancel()
+
+	session, err := s.sessionOpener.OpenSession(discoverCtx, server)
+	if err != nil {
+		return nil, nil, err
+	}
+	tools, err := session.ListTools(discoverCtx)
+	if err != nil {
+		_ = session.Close()
+		return nil, nil, err
+	}
+	return session, tools, nil
+}
+
+func (s *Service) cooldownError(server ServerConfig) error {
+	key := cacheKey(server)
+	fp := Fingerprint(server)
+
+	s.failMu.Lock()
+	defer s.failMu.Unlock()
+	if s.failures == nil {
+		return nil
+	}
+	state, ok := s.failures[key]
+	if !ok {
+		return nil
+	}
+	// 连接配置变更后旧冷却不再适用。
+	if state.fingerprint != fp {
+		delete(s.failures, key)
+		return nil
+	}
+	if !s.now().Before(state.until) {
+		return nil
+	}
+	return fmt.Errorf("mcp server in fail cooldown: %s", state.message)
+}
+
+func (s *Service) rememberFailure(server ServerConfig, err error) {
+	if err == nil {
+		return
+	}
+	key := cacheKey(server)
+	s.failMu.Lock()
+	defer s.failMu.Unlock()
+	if s.failures == nil {
+		s.failures = map[string]failState{}
+	}
+	s.failures[key] = failState{
+		until:       s.now().Add(s.failCooldown),
+		message:     err.Error(),
+		fingerprint: Fingerprint(server),
+	}
+}
+
+func (s *Service) clearFailure(server ServerConfig) {
+	key := cacheKey(server)
+	s.failMu.Lock()
+	defer s.failMu.Unlock()
+	if s.failures == nil {
+		return
+	}
+	delete(s.failures, key)
+}
+
+func staleTools(server ServerConfig, entry CacheEntry, ok bool) ([]ToolInfo, bool) {
+	if !ok || !Stale(server, entry) {
+		return nil, false
+	}
+	return cloneTools(entry.Tools), true
+}
+
 func (s *Service) withDefaults() *Service {
 	if s != nil {
 		if s.ttl <= 0 {
 			s.ttl = DefaultTTL
+		}
+		if s.discoverTimeout <= 0 {
+			s.discoverTimeout = DefaultDiscoverTimeout
+		}
+		if s.failCooldown <= 0 {
+			s.failCooldown = DefaultFailCooldown
 		}
 		if s.now == nil {
 			s.now = time.Now
@@ -163,8 +313,11 @@ func (s *Service) withDefaults() *Service {
 		if s.cache == nil {
 			s.cache = NewMemoryToolCache()
 		}
+		if s.failures == nil {
+			s.failures = map[string]failState{}
+		}
 		if s.client == nil {
-			client := NewSDKToolClient(nil)
+			client := NewSDKToolClient(defaultHTTPClient())
 			s.client = client
 			if s.sessionOpener == nil {
 				s.sessionOpener = client
@@ -174,7 +327,7 @@ func (s *Service) withDefaults() *Service {
 			if opener, ok := s.client.(SessionOpener); ok {
 				s.sessionOpener = opener
 			} else {
-				s.sessionOpener = NewSDKToolClient(nil)
+				s.sessionOpener = NewSDKToolClient(defaultHTTPClient())
 			}
 		}
 		return s

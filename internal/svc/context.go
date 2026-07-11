@@ -120,7 +120,7 @@ func New(ctx context.Context, cfg config.Config) (*ServiceContext, error) {
 		PromptManager:  promptManager,
 		PromptClient:   promptsgen.NewClient(promptManager),
 		LLMManager:     BuildLLMManager(),
-		MCPToolService: coremcp.NewService(coremcp.Options{}),
+		MCPToolService: coremcp.NewService(),
 		SkillRegistry:  skillRegistry,
 	}
 	bindPostgresRepositories(svcCtx, db)

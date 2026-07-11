@@ -29,14 +29,15 @@
 包入口。组合 `ToolClient`、`SessionOpener`、`ToolCache` 三类依赖：
 
 ```go
-mcpService := mcp.NewService(mcp.Options{
-    Client:          customClient,   // 可选，默认 SDKToolClient
-    SessionOpener:   customOpener,   // 可选，默认复用 client
-    Cache:           customCache,    // 可选，默认 MemoryToolCache
-    TTL:             10 * time.Minute,
-    DiscoverTimeout: 5 * time.Second,  // 可选，发现路径超时
-    FailCooldown:    30 * time.Second, // 可选，失败冷却
-})
+mcpService := mcp.NewService(
+    mcp.WithClient(customClient),       // 可选，默认 SDKToolClient
+    mcp.WithSessionOpener(customOpener),// 可选，默认复用 client
+    mcp.WithCache(customCache),         // 可选，默认 MemoryToolCache
+    mcp.WithTTL(10 * time.Minute),
+    mcp.WithDiscoverTimeout(5 * time.Second), // 可选，发现路径超时
+    mcp.WithFailCooldown(30 * time.Second),    // 可选，失败冷却
+)
+// 生产默认：mcp.NewService()
 ```
 
 | 方法 | 说明 |
@@ -180,7 +181,8 @@ Stale(server, entry) = (entry.Fingerprint == Fingerprint(server)) && len(entry.T
 |------|------|
 | `doc.go` | 包注释 |
 | `types.go` | 核心类型定义与辅助函数 |
-| `service.go` | `Service` 编排逻辑与接口定义 |
+| `options.go` | `Options` / `Option` 与 `With*` 函数式选项 |
+| `service.go` | `Service` 编排逻辑、接口定义与 `NewService` |
 | `cache.go` | `ToolCache` 接口 + `MemoryToolCache` |
 | `opened_tools.go` | `OpenedTools` lease 实现 |
 | `sdk_client.go` | SDK 实现与认证/传输适配 |

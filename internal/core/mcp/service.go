@@ -26,17 +26,6 @@ type SessionOpener interface {
 	OpenSession(ctx context.Context, server ServerConfig) (ToolSession, error)
 }
 
-// Options 配置 MCP 工具发现、会话建立和运行时缓存依赖。
-type Options struct {
-	Client          ToolClient
-	SessionOpener   SessionOpener
-	Cache           ToolCache
-	TTL             time.Duration
-	DiscoverTimeout time.Duration
-	FailCooldown    time.Duration
-	Now             func() time.Time
-}
-
 // failState 记录单个 MCP server 最近一次发现失败的冷却信息。
 type failState struct {
 	until       time.Time
@@ -58,49 +47,54 @@ type Service struct {
 	failures map[string]failState
 }
 
-// NewService 创建 MCP 服务；未提供依赖时使用 SDK client、内存缓存和默认超时/冷却。
-func NewService(options Options) *Service {
-	ttl := options.TTL
-	if ttl <= 0 {
-		ttl = DefaultTTL
-	}
-	discoverTimeout := options.DiscoverTimeout
-	if discoverTimeout <= 0 {
-		discoverTimeout = DefaultDiscoverTimeout
-	}
-	failCooldown := options.FailCooldown
-	if failCooldown <= 0 {
-		failCooldown = DefaultFailCooldown
-	}
-	now := options.Now
-	if now == nil {
-		now = time.Now
-	}
-	cache := options.Cache
-	if cache == nil {
-		cache = NewMemoryToolCache()
-	}
-	client := options.Client
-	defaultClient := NewSDKToolClient(defaultHTTPClient())
-	if client == nil {
-		client = defaultClient
-	}
-	sessionOpener := options.SessionOpener
-	if sessionOpener == nil {
-		if opener, ok := client.(SessionOpener); ok {
-			sessionOpener = opener
-		} else {
-			sessionOpener = defaultClient
+// NewService 创建 MCP 服务。
+//
+// 先填充完整默认值（SDK client、内存缓存、默认超时与冷却），再应用 opts。
+// 选项中的无效零值会被忽略并保留默认。
+func NewService(opts ...Option) *Service {
+	options := defaultOptions()
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&options)
 		}
 	}
+
+	// 后处理：补齐依赖默认实例，并纠正可能被错误写入的零值。
+	if options.TTL <= 0 {
+		options.TTL = DefaultTTL
+	}
+	if options.DiscoverTimeout <= 0 {
+		options.DiscoverTimeout = DefaultDiscoverTimeout
+	}
+	if options.FailCooldown <= 0 {
+		options.FailCooldown = DefaultFailCooldown
+	}
+	if options.Now == nil {
+		options.Now = time.Now
+	}
+	if options.Cache == nil {
+		options.Cache = NewMemoryToolCache()
+	}
+	defaultClient := NewSDKToolClient(defaultHTTPClient())
+	if options.Client == nil {
+		options.Client = defaultClient
+	}
+	if options.SessionOpener == nil {
+		if opener, ok := options.Client.(SessionOpener); ok {
+			options.SessionOpener = opener
+		} else {
+			options.SessionOpener = defaultClient
+		}
+	}
+
 	return &Service{
-		client:          client,
-		sessionOpener:   sessionOpener,
-		cache:           cache,
-		ttl:             ttl,
-		discoverTimeout: discoverTimeout,
-		failCooldown:    failCooldown,
-		now:             now,
+		client:          options.Client,
+		sessionOpener:   options.SessionOpener,
+		cache:           options.Cache,
+		ttl:             options.TTL,
+		discoverTimeout: options.DiscoverTimeout,
+		failCooldown:    options.FailCooldown,
+		now:             options.Now,
 		failures:        map[string]failState{},
 	}
 }
@@ -332,7 +326,7 @@ func (s *Service) withDefaults() *Service {
 		}
 		return s
 	}
-	return NewService(Options{})
+	return NewService()
 }
 
 func (s *Service) newEntry(server ServerConfig, tools []ToolInfo) CacheEntry {

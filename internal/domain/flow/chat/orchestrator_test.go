@@ -306,7 +306,7 @@ func TestToolRegistryRegistersMCPToolAndClosesSession(t *testing.T) {
 	opener := &fakeFlowMCPOpener{session: session}
 	svcCtx := newFlowChatTestServiceContext(t, userID, &fakeFlowChatLLMClient{})
 	svcCtx.MCPServerRepo.(*fakeFlowMCPServerRepo).rows = []*models.MCPServer{server}
-	svcCtx.MCPToolService = coremcp.NewService(coremcp.Options{SessionOpener: opener})
+	svcCtx.MCPToolService = coremcp.NewService(coremcp.WithSessionOpener(opener))
 	orchestrator := NewOrchestrator(svcCtx)
 
 	registry, closeTools, err := orchestrator.toolRegistry(context.Background(), userID, nil)
@@ -353,7 +353,7 @@ func TestToolRegistryMCPServerAndToolSwitchesTakePrecedence(t *testing.T) {
 			opener := &fakeFlowMCPOpener{session: session}
 			svcCtx := newFlowChatTestServiceContext(t, userID, &fakeFlowChatLLMClient{})
 			svcCtx.MCPServerRepo.(*fakeFlowMCPServerRepo).rows = []*models.MCPServer{server}
-			svcCtx.MCPToolService = coremcp.NewService(coremcp.Options{SessionOpener: opener})
+			svcCtx.MCPToolService = coremcp.NewService(coremcp.WithSessionOpener(opener))
 			if testCase.toolDisabled {
 				svcCtx.ToolConfigRepo.(*fakeFlowToolConfigRepo).rows = []*models.ToolConfig{{
 					ID: uuid.New(), UserID: userID, ToolKey: domaintoolmcp.ToolKey(server.ID, "search"), Enabled: false,
@@ -383,7 +383,7 @@ func TestToolRegistrySkipsUnavailableMCPServer(t *testing.T) {
 	server := &models.MCPServer{ID: uuid.New(), UserID: userID, Name: "故障服务", Enabled: true}
 	svcCtx := newFlowChatTestServiceContext(t, userID, &fakeFlowChatLLMClient{})
 	svcCtx.MCPServerRepo.(*fakeFlowMCPServerRepo).rows = []*models.MCPServer{server}
-	svcCtx.MCPToolService = coremcp.NewService(coremcp.Options{SessionOpener: &fakeFlowMCPOpener{err: errors.New("offline")}})
+	svcCtx.MCPToolService = coremcp.NewService(coremcp.WithSessionOpener(&fakeFlowMCPOpener{err: errors.New("offline")}))
 
 	registry, closeTools, err := NewOrchestrator(svcCtx).toolRegistry(context.Background(), userID, nil)
 	if err != nil {
@@ -412,10 +412,10 @@ func TestToolRegistryOpensMCPServersInParallel(t *testing.T) {
 	opener := &fakeFlowMCPOpener{block: true}
 	svcCtx := newFlowChatTestServiceContext(t, userID, &fakeFlowChatLLMClient{})
 	svcCtx.MCPServerRepo.(*fakeFlowMCPServerRepo).rows = servers
-	svcCtx.MCPToolService = coremcp.NewService(coremcp.Options{
-		SessionOpener:   opener,
-		DiscoverTimeout: time.Second,
-	})
+	svcCtx.MCPToolService = coremcp.NewService(
+		coremcp.WithSessionOpener(opener),
+		coremcp.WithDiscoverTimeout(time.Second),
+	)
 
 	start := time.Now()
 	registry, closeTools, err := NewOrchestrator(svcCtx).toolRegistry(context.Background(), userID, nil)
@@ -458,10 +458,10 @@ func TestToolRegistryMCPAssembleConcurrencyCap(t *testing.T) {
 	opener := &fakeFlowMCPOpener{block: true}
 	svcCtx := newFlowChatTestServiceContext(t, userID, &fakeFlowChatLLMClient{})
 	svcCtx.MCPServerRepo.(*fakeFlowMCPServerRepo).rows = servers
-	svcCtx.MCPToolService = coremcp.NewService(coremcp.Options{
-		SessionOpener:   opener,
-		DiscoverTimeout: time.Second,
-	})
+	svcCtx.MCPToolService = coremcp.NewService(
+		coremcp.WithSessionOpener(opener),
+		coremcp.WithDiscoverTimeout(time.Second),
+	)
 
 	if _, _, err := NewOrchestrator(svcCtx).toolRegistry(context.Background(), userID, nil); err != nil {
 		t.Fatalf("toolRegistry error = %v, want nil", err)
@@ -492,7 +492,7 @@ func TestToolRegistryRegistersMultipleMCPServers(t *testing.T) {
 	}
 	svcCtx := newFlowChatTestServiceContext(t, userID, &fakeFlowChatLLMClient{})
 	svcCtx.MCPServerRepo.(*fakeFlowMCPServerRepo).rows = []*models.MCPServer{serverA, serverB}
-	svcCtx.MCPToolService = coremcp.NewService(coremcp.Options{SessionOpener: opener})
+	svcCtx.MCPToolService = coremcp.NewService(coremcp.WithSessionOpener(opener))
 
 	registry, closeTools, err := NewOrchestrator(svcCtx).toolRegistry(context.Background(), userID, nil)
 	if err != nil {
@@ -633,7 +633,7 @@ func TestOrchestratorRunKeepsMCPIsErrorAsObservation(t *testing.T) {
 	}
 	svcCtx := newFlowChatTestServiceContext(t, userID, llmClient)
 	svcCtx.MCPServerRepo.(*fakeFlowMCPServerRepo).rows = []*models.MCPServer{server}
-	svcCtx.MCPToolService = coremcp.NewService(coremcp.Options{SessionOpener: &fakeFlowMCPOpener{session: session}})
+	svcCtx.MCPToolService = coremcp.NewService(coremcp.WithSessionOpener(&fakeFlowMCPOpener{session: session}))
 
 	messages, err := collectFlowMessages(NewOrchestrator(svcCtx).Run(context.Background(), Input{
 		UserID: userID, ConversationID: uuid.New(), CurrentUserMessageID: uuid.New(), Message: "搜索", Temperature: 0.2,
@@ -751,7 +751,7 @@ func newFlowChatTestServiceContext(t *testing.T, userID uuid.UUID, llmClient *fa
 		KnowledgeBaseRepo: &fakeFlowKnowledgeBaseRepo{},
 		MCPServerRepo:     &fakeFlowMCPServerRepo{},
 		ToolConfigRepo:    &fakeFlowToolConfigRepo{},
-		MCPToolService:    coremcp.NewService(coremcp.Options{Client: &fakeFlowMCPClient{}}),
+		MCPToolService:    coremcp.NewService(coremcp.WithClient(&fakeFlowMCPClient{})),
 		PromptManager:     promptManager,
 		PromptClient:      promptsgen.NewClient(promptManager),
 	}

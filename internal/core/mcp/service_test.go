@@ -108,6 +108,35 @@ func (c *fakeToolCache) Valid(server ServerConfig, entry CacheEntry) bool {
 	return entry.Fingerprint == Fingerprint(server) && time.Now().Before(entry.ExpiresAt)
 }
 
+// TestNewServiceAppliesDefaultsAndIgnoresZeroOptions 验证构造器使用默认超时/冷却，并忽略无效零值选项。
+func TestNewServiceAppliesDefaultsAndIgnoresZeroOptions(t *testing.T) {
+	service := NewService(WithTTL(0), WithDiscoverTimeout(0), WithFailCooldown(0), WithClient(nil), WithCache(nil), WithNow(nil))
+	if service == nil {
+		t.Fatal("NewService() = nil, want non-nil service")
+	}
+	if service.ttl != DefaultTTL {
+		t.Fatalf("NewService ttl = %v, want default %v", service.ttl, DefaultTTL)
+	}
+	if service.discoverTimeout != DefaultDiscoverTimeout {
+		t.Fatalf("NewService discoverTimeout = %v, want default %v", service.discoverTimeout, DefaultDiscoverTimeout)
+	}
+	if service.failCooldown != DefaultFailCooldown {
+		t.Fatalf("NewService failCooldown = %v, want default %v", service.failCooldown, DefaultFailCooldown)
+	}
+	if service.client == nil || service.sessionOpener == nil || service.cache == nil || service.now == nil {
+		t.Fatal("NewService defaults left client/sessionOpener/cache/now nil")
+	}
+
+	wantTTL := 2 * time.Minute
+	wantDiscover := 100 * time.Millisecond
+	wantCooldown := 15 * time.Second
+	custom := NewService(WithTTL(wantTTL), WithDiscoverTimeout(wantDiscover), WithFailCooldown(wantCooldown))
+	if custom.ttl != wantTTL || custom.discoverTimeout != wantDiscover || custom.failCooldown != wantCooldown {
+		t.Fatalf("NewService custom timeouts = %v/%v/%v, want %v/%v/%v",
+			custom.ttl, custom.discoverTimeout, custom.failCooldown, wantTTL, wantDiscover, wantCooldown)
+	}
+}
+
 func TestServiceBuildToolListUsesValidRuntimeCache(t *testing.T) {
 	// 验证运行期缓存命中时直接返回完整工具信息，不访问远端 MCP 服务。
 	server := ServerConfig{ID: uuid.New(), UpdatedAt: time.Now()}
@@ -128,7 +157,7 @@ func TestServiceBuildToolListUsesValidRuntimeCache(t *testing.T) {
 		},
 	}
 
-	got, err := NewService(Options{Client: client, Cache: cache}).BuildToolList(context.Background(), server)
+	got, err := NewService(WithClient(client), WithCache(cache)).BuildToolList(context.Background(), server)
 	if err != nil {
 		t.Fatalf("BuildToolList error = %v", err)
 	}
@@ -154,7 +183,7 @@ func TestServiceBuildToolListRefreshesWhenFingerprintChanges(t *testing.T) {
 		},
 	}
 
-	got, err := NewService(Options{Client: client, Cache: cache}).BuildToolList(context.Background(), server)
+	got, err := NewService(WithClient(client), WithCache(cache)).BuildToolList(context.Background(), server)
 	if err != nil {
 		t.Fatalf("BuildToolList error = %v", err)
 	}
@@ -181,7 +210,7 @@ func TestServiceBuildToolListIgnoresDatabaseDisplayToolsCache(t *testing.T) {
 	}
 	remote := []ToolInfo{{Name: "remote", Description: "remote desc", InputSchema: map[string]any{"type": "object"}}}
 	client := &fakeToolClient{tools: remote}
-	service := NewService(Options{Client: client, TTL: 5 * time.Minute, Now: func() time.Time { return now }})
+	service := NewService(WithClient(client), WithTTL(5*time.Minute), WithNow(func() time.Time { return now }))
 
 	got, err := service.BuildToolList(context.Background(), server)
 	if err != nil {
@@ -213,7 +242,7 @@ func TestServiceBuildToolListRefreshesWhenTTLExpires(t *testing.T) {
 	}
 	client := &fakeToolClient{tools: []ToolInfo{{Name: "remote-tool", InputSchema: map[string]any{"type": "object"}}}}
 
-	got, err := NewService(Options{Client: client, TTL: time.Minute}).BuildToolList(context.Background(), server)
+	got, err := NewService(WithClient(client), WithTTL(time.Minute)).BuildToolList(context.Background(), server)
 	if err != nil {
 		t.Fatalf("BuildToolList error = %v", err)
 	}
@@ -230,7 +259,7 @@ func TestServiceBuildToolListReturnsRemoteError(t *testing.T) {
 	wantErr := errors.New("remote unavailable")
 	client := &fakeToolClient{err: wantErr}
 
-	_, err := NewService(Options{Client: client}).BuildToolList(context.Background(), ServerConfig{
+	_, err := NewService(WithClient(client)).BuildToolList(context.Background(), ServerConfig{
 		ID:        uuid.New(),
 		UpdatedAt: time.Now(),
 	})
@@ -252,7 +281,7 @@ func TestServiceRefreshToolListBypassesValidCache(t *testing.T) {
 		},
 	}
 
-	tools, err := NewService(Options{Client: client, Cache: cache}).RefreshToolList(context.Background(), server)
+	tools, err := NewService(WithClient(client), WithCache(cache)).RefreshToolList(context.Background(), server)
 	if err != nil {
 		t.Fatalf("RefreshToolList error = %v, want nil", err)
 	}
@@ -277,7 +306,7 @@ func TestServiceOpenToolsUsesCacheAndLazilyOpensSession(t *testing.T) {
 			Tools:       []ToolInfo{{Name: "cached"}},
 		},
 	}
-	service := NewService(Options{Client: &fakeToolClient{}, SessionOpener: opener, Cache: cache})
+	service := NewService(WithClient(&fakeToolClient{}), WithSessionOpener(opener), WithCache(cache))
 
 	opened, err := service.OpenTools(context.Background(), server)
 	if err != nil {
@@ -314,7 +343,7 @@ func TestServiceOpenToolsRefreshesWithReusableSession(t *testing.T) {
 	}
 	opener := &fakeSessionOpener{session: session}
 	cache := &fakeToolCache{}
-	service := NewService(Options{Client: &fakeToolClient{}, SessionOpener: opener, Cache: cache})
+	service := NewService(WithClient(&fakeToolClient{}), WithSessionOpener(opener), WithCache(cache))
 
 	opened, err := service.OpenTools(context.Background(), server)
 	if err != nil {
@@ -339,7 +368,7 @@ func TestServiceOpenToolsClosesSessionWhenRefreshFails(t *testing.T) {
 	want := errors.New("list failed")
 	session := &fakeToolSession{listErr: want}
 	opener := &fakeSessionOpener{session: session}
-	service := NewService(Options{Client: &fakeToolClient{}, SessionOpener: opener})
+	service := NewService(WithClient(&fakeToolClient{}), WithSessionOpener(opener))
 
 	_, err := service.OpenTools(context.Background(), ServerConfig{ID: uuid.New()})
 	if !errors.Is(err, want) {
@@ -363,7 +392,7 @@ func TestServiceCacheStatusReportsRuntimeAndMissOnly(t *testing.T) {
 		},
 	}
 
-	status, err := NewService(Options{Cache: cache}).CacheStatus(context.Background(), server)
+	status, err := NewService(WithCache(cache)).CacheStatus(context.Background(), server)
 	if err != nil {
 		t.Fatalf("CacheStatus runtime error = %v", err)
 	}
@@ -372,7 +401,7 @@ func TestServiceCacheStatusReportsRuntimeAndMissOnly(t *testing.T) {
 	}
 
 	syncedAt := now
-	status, err = NewService(Options{Now: func() time.Time { return now }}).CacheStatus(context.Background(), ServerConfig{
+	status, err = NewService(WithNow(func() time.Time { return now })).CacheStatus(context.Background(), ServerConfig{
 		ID:         uuid.New(),
 		UpdatedAt:  now,
 		ToolsCache: []ToolMeta{{Name: "db"}},
@@ -385,7 +414,7 @@ func TestServiceCacheStatusReportsRuntimeAndMissOnly(t *testing.T) {
 		t.Fatalf("display cache status = %#v, want invalid", status)
 	}
 
-	status, err = NewService(Options{}).CacheStatus(context.Background(), ServerConfig{ID: uuid.New(), UpdatedAt: now})
+	status, err = NewService().CacheStatus(context.Background(), ServerConfig{ID: uuid.New(), UpdatedAt: now})
 	if err != nil {
 		t.Fatalf("CacheStatus miss error = %v", err)
 	}
@@ -453,11 +482,11 @@ func TestMetasFromToolsStripsRuntimeOnlyFields(t *testing.T) {
 func TestServiceOpenToolsRespectsDiscoverTimeout(t *testing.T) {
 	server := ServerConfig{ID: uuid.New()}
 	opener := &fakeSessionOpener{block: true}
-	service := NewService(Options{
-		SessionOpener:   opener,
-		DiscoverTimeout: 30 * time.Millisecond,
-		FailCooldown:    time.Minute,
-	})
+	service := NewService(
+		WithSessionOpener(opener),
+		WithDiscoverTimeout(30*time.Millisecond),
+		WithFailCooldown(time.Minute),
+	)
 
 	start := time.Now()
 	_, err := service.OpenTools(context.Background(), server)
@@ -478,11 +507,11 @@ func TestServiceOpenToolsFailCooldownSkipsRemote(t *testing.T) {
 	server := ServerConfig{ID: uuid.New()}
 	want := errors.New("offline")
 	opener := &fakeSessionOpener{err: want}
-	service := NewService(Options{
-		SessionOpener:   opener,
-		DiscoverTimeout: time.Second,
-		FailCooldown:    time.Minute,
-	})
+	service := NewService(
+		WithSessionOpener(opener),
+		WithDiscoverTimeout(time.Second),
+		WithFailCooldown(time.Minute),
+	)
 
 	_, err := service.OpenTools(context.Background(), server)
 	if !errors.Is(err, want) {
@@ -502,12 +531,12 @@ func TestServiceOpenToolsRetriesAfterFailCooldown(t *testing.T) {
 	server := ServerConfig{ID: uuid.New()}
 	now := time.Now()
 	opener := &fakeSessionOpener{err: errors.New("offline")}
-	service := NewService(Options{
-		SessionOpener:   opener,
-		DiscoverTimeout: time.Second,
-		FailCooldown:    10 * time.Second,
-		Now:             func() time.Time { return now },
-	})
+	service := NewService(
+		WithSessionOpener(opener),
+		WithDiscoverTimeout(time.Second),
+		WithFailCooldown(10*time.Second),
+		WithNow(func() time.Time { return now }),
+	)
 
 	if _, err := service.OpenTools(context.Background(), server); err == nil {
 		t.Fatal("first OpenTools error = nil, want offline")
@@ -534,7 +563,7 @@ func TestServiceOpenToolsReturnsStaleOnDiscoverFailure(t *testing.T) {
 		},
 	}
 	opener := &fakeSessionOpener{err: errors.New("offline")}
-	service := NewService(Options{SessionOpener: opener, Cache: cache, FailCooldown: time.Minute})
+	service := NewService(WithSessionOpener(opener), WithCache(cache), WithFailCooldown(time.Minute))
 
 	opened, err := service.OpenTools(context.Background(), server)
 	if err != nil {
@@ -568,12 +597,12 @@ func TestServiceOpenToolsClearsFailCooldownOnSuccess(t *testing.T) {
 	now := time.Now()
 	// 使用空缓存，避免成功后命中 TTL 掩盖冷却状态。
 	cache := &fakeToolCache{}
-	service := NewService(Options{
-		SessionOpener: opener,
-		Cache:         cache,
-		FailCooldown:  10 * time.Second,
-		Now:           func() time.Time { return now },
-	})
+	service := NewService(
+		WithSessionOpener(opener),
+		WithCache(cache),
+		WithFailCooldown(10*time.Second),
+		WithNow(func() time.Time { return now }),
+	)
 
 	if _, err := service.OpenTools(context.Background(), server); err == nil {
 		t.Fatal("first OpenTools error = nil, want offline")
@@ -600,7 +629,7 @@ func TestServiceOpenToolsClearsFailCooldownOnSuccess(t *testing.T) {
 func TestServiceRefreshToolListBypassesFailCooldown(t *testing.T) {
 	server := ServerConfig{ID: uuid.New()}
 	client := &fakeToolClient{err: errors.New("offline")}
-	service := NewService(Options{Client: client, FailCooldown: time.Minute, DiscoverTimeout: time.Second})
+	service := NewService(WithClient(client), WithFailCooldown(time.Minute), WithDiscoverTimeout(time.Second))
 
 	if _, err := service.BuildToolList(context.Background(), server); err == nil {
 		t.Fatal("BuildToolList error = nil, want offline")
@@ -630,7 +659,7 @@ func TestServiceRefreshToolListBypassesFailCooldown(t *testing.T) {
 // TestServiceBuildToolListRespectsDiscoverTimeout 验证 ListTools 发现路径遵守 DiscoverTimeout。
 func TestServiceBuildToolListRespectsDiscoverTimeout(t *testing.T) {
 	client := &fakeToolClient{block: true}
-	service := NewService(Options{Client: client, DiscoverTimeout: 30 * time.Millisecond})
+	service := NewService(WithClient(client), WithDiscoverTimeout(30*time.Millisecond))
 
 	start := time.Now()
 	_, err := service.BuildToolList(context.Background(), ServerConfig{ID: uuid.New()})
@@ -647,7 +676,7 @@ func TestServiceBuildToolListRespectsDiscoverTimeout(t *testing.T) {
 func TestServiceFailCooldownClearsWhenFingerprintChanges(t *testing.T) {
 	server := ServerConfig{ID: uuid.New(), URL: "https://a.example/mcp"}
 	opener := &fakeSessionOpener{err: errors.New("offline")}
-	service := NewService(Options{SessionOpener: opener, FailCooldown: time.Minute})
+	service := NewService(WithSessionOpener(opener), WithFailCooldown(time.Minute))
 
 	if _, err := service.OpenTools(context.Background(), server); err == nil {
 		t.Fatal("first OpenTools error = nil, want offline")

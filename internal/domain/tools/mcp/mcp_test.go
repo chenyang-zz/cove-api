@@ -62,7 +62,7 @@ func TestNewToolPreservesSchemaAndMCPResult(t *testing.T) {
 			IsError:           true,
 		},
 	}
-	service := coremcp.NewService(coremcp.Options{SessionOpener: fakeDomainMCPOpener{session: session}})
+	service := coremcp.NewService(coremcp.WithSessionOpener(fakeDomainMCPOpener{session: session}))
 	opened, err := service.OpenTools(context.Background(), coremcp.ServerConfig{ID: server.ID})
 	if err != nil {
 		t.Fatalf("OpenTools error = %v, want nil", err)

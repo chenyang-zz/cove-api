@@ -654,7 +654,7 @@ func TestSyncMCPServerUpdatesToolsAndClearsLastError(t *testing.T) {
 	logic := NewSyncMCPServerLogic(context.Background(), &svc.ServiceContext{
 		MCPServerRepo:  repo,
 		SecretCipher:   cipher,
-		MCPToolService: coremcp.NewService(coremcp.Options{Client: client, Cache: cache}),
+		MCPToolService: coremcp.NewService(coremcp.WithClient(client), coremcp.WithCache(cache)),
 	})
 
 	out, err := logic.SyncMCPServer(userID, &request.UriMCPServerIDRequest{ID: mcpID.String()})
@@ -693,7 +693,7 @@ func TestSyncMCPServerBypassesRuntimeTTL(t *testing.T) {
 	}
 	repo := newFakeMCPServerRepository(server)
 	client := &countingSyncMCPToolClient{tools: []coremcp.ToolInfo{{Name: "cached"}}}
-	service := coremcp.NewService(coremcp.Options{Client: client})
+	service := coremcp.NewService(coremcp.WithClient(client))
 	coreServer := coremcp.ServerConfig{ID: server.ID, Transport: server.Transport, URL: server.Url, AuthType: server.AuthType, UpdatedAt: server.UpdatedAt}
 	if _, err := service.BuildToolList(context.Background(), coreServer); err != nil {
 		t.Fatalf("BuildToolList error = %v, want nil", err)
@@ -739,7 +739,7 @@ func TestSyncMCPServerPassesDecryptedAPIKeyQueryConfig(t *testing.T) {
 	logic := NewSyncMCPServerLogic(context.Background(), &svc.ServiceContext{
 		MCPServerRepo:  repo,
 		SecretCipher:   cipher,
-		MCPToolService: coremcp.NewService(coremcp.Options{Client: client}),
+		MCPToolService: coremcp.NewService(coremcp.WithClient(client)),
 	})
 
 	_, err = logic.SyncMCPServer(userID, &request.UriMCPServerIDRequest{ID: mcpID.String()})
@@ -775,7 +775,7 @@ func TestSyncMCPServerRecordsLastErrorAndKeepsToolsCache(t *testing.T) {
 	logic := NewSyncMCPServerLogic(context.Background(), &svc.ServiceContext{
 		MCPServerRepo:  repo,
 		SecretCipher:   newTestCipher(t),
-		MCPToolService: coremcp.NewService(coremcp.Options{Client: client}),
+		MCPToolService: coremcp.NewService(coremcp.WithClient(client)),
 	})
 
 	_, err := logic.SyncMCPServer(userID, &request.UriMCPServerIDRequest{ID: mcpID.String()})

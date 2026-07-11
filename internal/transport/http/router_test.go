@@ -133,7 +133,7 @@ func newTestRouterWithConfigAndOverrides(t *testing.T, cfg config.Config, config
 		LLMManager:        llmManager,
 		PromptManager:     promptManager,
 		PromptClient:      promptsgen.NewClient(promptManager),
-		MCPToolService:    coremcp.NewService(coremcp.Options{Client: &testMCPToolClient{}}),
+		MCPToolService:    coremcp.NewService(coremcp.WithClient(&testMCPToolClient{})),
 		SecretCipher:      cipher,
 		TokenIssuer:       security.NewTokenIssuer("test-secret", time.Hour),
 	}
@@ -1612,9 +1612,9 @@ func TestToolConfigRouteGroupsMCPToolsByServer(t *testing.T) {
 		svcCtx.MCPServerRepo.(*testMCPServerRepository).rows = []*models.MCPServer{{
 			ID: serverID, UserID: userID, Name: "团队搜索", Enabled: true, Status: "ready",
 		}}
-		svcCtx.MCPToolService = coremcp.NewService(coremcp.Options{Client: &testMCPToolClient{tools: []coremcp.ToolInfo{{
+		svcCtx.MCPToolService = coremcp.NewService(coremcp.WithClient(&testMCPToolClient{tools: []coremcp.ToolInfo{{
 			Name: "search", Title: "网页搜索", Description: "搜索网页",
-		}}}})
+		}}}))
 	})
 
 	recorder := httptest.NewRecorder()

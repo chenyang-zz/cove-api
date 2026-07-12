@@ -1,0 +1,37 @@
+internal/domain/tools/builtin/time.go
+  s_bed6061d2f5706::t_5d7847774df91f 23
+internal/domain/flow/chat/orchestrator.go
+  s_bed6061d2f5706::t_20046ac1fdfbbe 132,438,460,472,480-498
+  s_bed6061d2f5706::t_826c6dee3927b6 499-500
+  s_8801498b1bc262::t_b9cd341613e7c4 7,518
+internal/domain/flow/chat/orchestrator_test.go
+  s_bed6061d2f5706::t_5d7847774df91f 571-572,575-576
+  s_bed6061d2f5706::t_2f0b8decfaaa6e 618,639,689-709
+  s_bed6061d2f5706::t_59325d0d263b45 710-711
+internal/logic/chat/chat_stream_test.go
+  s_bed6061d2f5706::t_5d7847774df91f 141-142
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "e5e75c70fcf5d8982be3d0de18e24f3993f7a47a",
+  "prompts": {},
+  "sessions": {
+    "s_8801498b1bc262": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_8801498b1bc262",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    },
+    "s_bed6061d2f5706": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1817-2478-7702-8e5a-fc4304ca0bc4",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": null
+    }
+  }
+}

@@ -21,7 +21,11 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type CSSProperties,
+  type UIEvent as ReactUIEvent,
 } from 'react'
+import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { StoredSession } from '../auth/types'
@@ -37,22 +41,34 @@ import type {
   ChatAttachment,
   ChatMessage,
   ChatSubmission,
-  ChatStreamEvent,
+  ChatToolEvent,
   Conversation,
+  MessagePart,
   ResourceState,
   StreamState,
-  ToolActivity,
 } from './types'
 import './ChatScreen.css'
 
 const coveIcon = '/cove-mark.svg'
 const maxAttachmentCount = 3
 const maxAttachmentBytes = 1024 * 1024
+const conversationPageSize = 20
+const messagePageSize = 30
+const paginationThreshold = 48
+const conversationMenuWidth = 136
+const conversationMenuHeight = 92
+const conversationMenuGap = 6
+const conversationMenuEdge = 8
 const textFilePattern = /\.(?:txt|md|markdown|csv|json|log|ya?ml|xml|html?|css|jsx?|tsx?|py|go|rs|java|c|cpp|h|sh|sql)$/i
 
 type ChatScreenProps = {
   session: StoredSession
   onLogout: () => void
+}
+
+type ConversationMenuPosition = {
+  top: number
+  left: number
 }
 
 function localMessage(role: 'user' | 'assistant', content: string): ChatMessage {
@@ -67,7 +83,7 @@ function localMessage(role: 'user' | 'assistant', content: string): ChatMessage 
     feedback: null,
     created_at: new Date().toISOString(),
     pending: true,
-    tools: [],
+    ...(role === 'assistant' ? { parts: [] } : {}),
   }
 }
 
@@ -88,24 +104,236 @@ function upsertConversation(items: Conversation[], event: { conversation_id: str
   return [next, ...items.filter((item) => item.id !== next.id)]
 }
 
-function updateTool(tools: ToolActivity[], event: Extract<ChatStreamEvent, { type: string }>) {
-  if (event.type !== 'tool_call' && event.type !== 'tool_result') {
-    return tools
+function textPart(text: string): MessagePart {
+  return {
+    type: 'text',
+    text,
+    tool: null,
+    input: null,
+    observation: null,
+    error: null,
+    iteration: null,
+    tool_call_id: null,
   }
-  const toolEvent = event as {
-    type: 'tool_call' | 'tool_result'
-    tool_call_id: string
-    tool: string
-    error?: string
+}
+
+function appendTokenPart(parts: MessagePart[], text: string) {
+  const next = [...parts]
+  const last = next[next.length - 1]
+  if (last?.type === 'text') {
+    next[next.length - 1] = { ...last, text: `${last.text ?? ''}${text}` }
+    return next
   }
-  const status =
-    toolEvent.type === 'tool_call' ? 'running' : toolEvent.error ? 'error' : 'complete'
-  const activity: ToolActivity = {
-    id: toolEvent.tool_call_id,
-    tool: toolEvent.tool,
-    status,
+  return [...next, textPart(text)]
+}
+
+function appendToolPart(parts: MessagePart[], event: ChatToolEvent) {
+  return [
+    ...parts,
+    {
+      type: event.type,
+      text: null,
+      tool: event.tool,
+      input: event.input ?? null,
+      observation: event.observation ?? null,
+      error: event.error ?? null,
+      iteration: event.iteration,
+      tool_call_id: event.tool_call_id,
+    },
+  ]
+}
+
+type TimelineItem =
+  | { kind: 'text'; part: MessagePart; key: string }
+  | { kind: 'tool'; call: MessagePart | null; result: MessagePart | null; key: string }
+
+type MarkdownNode = {
+  type: string
+  value?: string
+  children?: MarkdownNode[]
+}
+
+const markdownEmojiPattern = /(?:\p{Regional_Indicator}{2}|[#*0-9]\uFE0F?\u20E3|\p{Extended_Pictographic})(?:\uFE0F|\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})?)*/gu
+
+function normalizeMarkdownEmoji(text: string) {
+  return text.replace(/\u2753\uFE0F?/gu, '?').replace(markdownEmojiPattern, '')
+}
+
+function remarkEmojiFallback() {
+  return (tree: MarkdownNode) => {
+    function visit(node: MarkdownNode) {
+      if (node.type === 'text' && typeof node.value === 'string') {
+        node.value = normalizeMarkdownEmoji(node.value)
+      }
+      node.children?.forEach(visit)
+    }
+    visit(tree)
   }
-  return [...tools.filter((item) => item.id !== activity.id), activity]
+}
+
+function messageTimeline(message: ChatMessage): TimelineItem[] {
+  const source = message.parts?.length
+    ? message.parts
+    : message.meta_data?.parts?.length
+      ? message.meta_data.parts
+      : message.content
+        ? [textPart(message.content)]
+        : []
+  const timeline: TimelineItem[] = []
+  const toolItems = new Map<string, Extract<TimelineItem, { kind: 'tool' }>>()
+
+  source.forEach((part, index) => {
+    if (part.type === 'text') {
+      if (part.text?.trim()) {
+        timeline.push({ kind: 'text', part, key: `text-${index}` })
+      }
+      return
+    }
+    if (part.type === 'tool_call') {
+      const key = part.tool_call_id || `tool-${index}`
+      const item: Extract<TimelineItem, { kind: 'tool' }> = {
+        kind: 'tool',
+        call: part,
+        result: null,
+        key,
+      }
+      timeline.push(item)
+      toolItems.set(key, item)
+      return
+    }
+    if (part.type === 'tool_result') {
+      const key = part.tool_call_id || `tool-result-${index}`
+      const existing = toolItems.get(key)
+      if (existing) {
+        existing.result = part
+      } else {
+        timeline.push({ kind: 'tool', call: null, result: part, key })
+      }
+      return
+    }
+    if (import.meta.env.DEV) {
+      console.debug('Ignored chat message part', part)
+    }
+  })
+  if (message.content.trim() && !timeline.some((item) => item.kind === 'text')) {
+    timeline.push({ kind: 'text', part: textPart(message.content), key: 'content-fallback' })
+  }
+  return timeline
+}
+
+function MarkdownContent({ text }: { text: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkEmojiFallback]}
+      skipHtml
+      components={{
+        a: ({ href, children }) => (
+          <a href={href} target="_blank" rel="noreferrer noopener">
+            {children}
+          </a>
+        ),
+        table: ({ children }) => (
+          <div
+            className="markdown-table-scroll"
+            role="region"
+            aria-label="表格内容，可横向滚动"
+            tabIndex={0}
+          >
+            <table>{children}</table>
+          </div>
+        ),
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  )
+}
+
+function ToolEventDetails({ call, result }: { call: MessagePart | null; result: MessagePart | null }) {
+  const tool = call?.tool || result?.tool || '未知工具'
+  const status = result ? (result.error ? 'error' : 'complete') : 'running'
+  const label = status === 'running' ? '正在使用' : status === 'error' ? '工具失败' : '已使用'
+  const input = call?.input ?? result?.input
+
+  return (
+    <details className={`tool-event tool-event--${status}`}>
+      <summary>
+        <span className="tool-event__status" aria-hidden="true" />
+        <span>{label} {tool}</span>
+      </summary>
+      <div className="tool-event__details">
+        {input && Object.keys(input).length > 0 && (
+          <div>
+            <strong>输入</strong>
+            <pre>{JSON.stringify(input, null, 2)}</pre>
+          </div>
+        )}
+        {result?.observation && (
+          <div>
+            <strong>结果</strong>
+            <pre>{result.observation}</pre>
+          </div>
+        )}
+        {result?.error && (
+          <div className="tool-event__error">
+            <strong>错误</strong>
+            <pre>{result.error}</pre>
+          </div>
+        )}
+        {!input && !result?.observation && !result?.error && <p>暂无详细信息。</p>}
+      </div>
+    </details>
+  )
+}
+
+function AssistantMessageContent({ message }: { message: ChatMessage }) {
+  const timeline = messageTimeline(message)
+  const hasText = timeline.some((item) => item.kind === 'text')
+
+  return (
+    <>
+      {timeline.map((item) =>
+        item.kind === 'text' ? (
+          <div className="message-part message-part--text" key={item.key}>
+            <MarkdownContent text={item.part.text ?? ''} />
+          </div>
+        ) : (
+          <ToolEventDetails call={item.call} result={item.result} key={item.key} />
+        ),
+      )}
+      {message.pending && timeline.length === 0 && (
+        <span className="thinking-indicator" aria-label="Cove 正在思考"><i /><i /><i /></span>
+      )}
+      {message.meta_data?.interrupted && (
+        <p className="message-interrupted" role="status">回复已中断</p>
+      )}
+      {message.pending && hasText && <span className="stream-cursor" aria-hidden="true" />}
+    </>
+  )
+}
+
+function mergeUniqueById<T extends { id: string }>(items: T[], incoming: T[]) {
+  const seen = new Set(items.map((item) => item.id))
+  return [...items, ...incoming.filter((item) => !seen.has(item.id))]
+}
+
+function prependUniqueById<T extends { id: string }>(items: T[], incoming: T[]) {
+  const existing = new Set(items.map((item) => item.id))
+  return [...incoming.filter((item) => !existing.has(item.id)), ...items]
+}
+
+type ScrollAnchor = {
+  scrollHeight: number
+  scrollTop: number
+}
+
+function isNearBottom(element: HTMLElement) {
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= paginationThreshold
+}
+
+function scrollToBottom(element: HTMLElement, behavior: ScrollBehavior = 'auto') {
+  const maximumScrollTop = Math.max(0, element.scrollHeight - element.clientHeight)
+  element.scrollTo({ top: maximumScrollTop, behavior })
 }
 
 function isTextAttachment(file: File) {
@@ -116,10 +344,17 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [conversationState, setConversationState] = useState<ResourceState>('loading')
   const [conversationError, setConversationError] = useState('')
+  const [conversationTotal, setConversationTotal] = useState(0)
+  const [conversationNextPage, setConversationNextPage] = useState(2)
+  const [conversationLoadingMore, setConversationLoadingMore] = useState(false)
+  const [conversationMoreError, setConversationMoreError] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [messageState, setMessageState] = useState<ResourceState>('idle')
   const [messageError, setMessageError] = useState('')
+  const [messageHasMore, setMessageHasMore] = useState(false)
+  const [messageLoadingMore, setMessageLoadingMore] = useState(false)
+  const [messageMoreError, setMessageMoreError] = useState('')
   const [streamState, setStreamState] = useState<StreamState>({ status: 'idle' })
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<ChatAttachment[]>([])
@@ -128,8 +363,8 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
   const [knowledgeState, setKnowledgeState] = useState<ResourceState>('loading')
   const [knowledgeError, setKnowledgeError] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [accountOpen, setAccountOpen] = useState(false)
   const [conversationMenuId, setConversationMenuId] = useState<string | null>(null)
+  const [conversationMenuPosition, setConversationMenuPosition] = useState<ConversationMenuPosition | null>(null)
   const [renameTarget, setRenameTarget] = useState<Conversation | null>(null)
   const [renameTitle, setRenameTitle] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null)
@@ -138,31 +373,48 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
   const abortRef = useRef<AbortController | null>(null)
   const skipHistoryForRef = useRef<string | null>(null)
   const viewportRootRef = useRef<HTMLElement | null>(null)
-  const accountMenuRef = useRef<HTMLDivElement | null>(null)
+  const conversationListRef = useRef<HTMLDivElement | null>(null)
   const conversationMenuRef = useRef<HTMLDivElement | null>(null)
   const messageScrollRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const hasMessagesRef = useRef(false)
+  const selectedIdRef = useRef<string | null>(null)
+  const historyGenerationRef = useRef(0)
+  const conversationLoadingMoreRef = useRef(false)
+  const messageLoadingMoreRef = useRef(false)
+  const messageAnchorRef = useRef<ScrollAnchor | null>(null)
+  const initialMessageScrollRef = useRef(false)
+  const autoFollowRef = useRef(true)
   const keyboardHeightRef = useRef(Number(sessionStorage.getItem('cove-keyboard-height')) || 0)
   const keyboardPreparationTimerRef = useRef<number | null>(null)
 
   const displayName = session.user.nickname?.trim() || '用户'
   const activeConversation = conversations.find((item) => item.id === selectedId)
+  const menuConversation = conversations.find((item) => item.id === conversationMenuId)
   const isEmptyConversation = messageState === 'ready' && messages.length === 0
 
   const loadConversations = useCallback(async (selectFirst = false) => {
     setConversationState('loading')
     setConversationError('')
+    setConversationMoreError('')
     try {
-      const response = await listConversations()
+      const response = await listConversations(1, conversationPageSize)
       const sorted = [...response.list].sort(
         (a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at),
       )
+      const total = Number.isFinite(response.total) ? response.total : sorted.length
+      const page = Number.isFinite(response.page) ? response.page : 1
       setConversations(sorted)
+      setConversationTotal(total)
+      setConversationNextPage(page + 1)
       setConversationState('ready')
       if (selectFirst && sorted.length > 0) {
-        setSelectedId((current) => current ?? sorted[0].id)
+        setSelectedId((current) => {
+          const next = current ?? sorted[0].id
+          selectedIdRef.current = next
+          return next
+        })
       }
     } catch (error: unknown) {
       setConversationState('error')
@@ -170,18 +422,103 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
     }
   }, [])
 
+  const loadMoreConversations = useCallback(async () => {
+    if (
+      conversationLoadingMoreRef.current ||
+      conversationState !== 'ready' ||
+      conversations.length >= conversationTotal
+    ) {
+      return
+    }
+    conversationLoadingMoreRef.current = true
+    setConversationLoadingMore(true)
+    setConversationMoreError('')
+    try {
+      const response = await listConversations(conversationNextPage, conversationPageSize)
+      setConversations((current) => mergeUniqueById(current, response.list))
+      if (Number.isFinite(response.total)) {
+        setConversationTotal(response.total)
+      }
+      setConversationNextPage(
+        Number.isFinite(response.page) ? response.page + 1 : conversationNextPage + 1,
+      )
+    } catch (error: unknown) {
+      setConversationMoreError(error instanceof Error ? error.message : '更多会话加载失败。')
+    } finally {
+      conversationLoadingMoreRef.current = false
+      setConversationLoadingMore(false)
+    }
+  }, [conversationNextPage, conversationState, conversationTotal, conversations.length])
+
   const loadHistory = useCallback(async (conversationId: string) => {
+    const generation = ++historyGenerationRef.current
+    initialMessageScrollRef.current = false
     setMessageState('loading')
     setMessageError('')
+    setMessageMoreError('')
+    setMessageHasMore(false)
+    setMessageLoadingMore(false)
+    messageLoadingMoreRef.current = false
     try {
-      const response = await listMessages(conversationId)
+      const response = await listMessages(conversationId, { limit: messagePageSize })
+      if (generation !== historyGenerationRef.current || selectedIdRef.current !== conversationId) {
+        return
+      }
+      initialMessageScrollRef.current = true
       setMessages(response.list)
+      setMessageHasMore(response.has_more)
       setMessageState('ready')
     } catch (error: unknown) {
+      if (generation !== historyGenerationRef.current || selectedIdRef.current !== conversationId) {
+        return
+      }
       setMessageState('error')
       setMessageError(error instanceof Error ? error.message : '消息加载失败。')
     }
   }, [])
+
+  const loadOlderHistory = useCallback(async () => {
+    const conversationId = selectedId
+    const oldestMessage = messages[0]
+    const scroll = messageScrollRef.current
+    if (
+      !conversationId ||
+      !oldestMessage ||
+      !scroll ||
+      !messageHasMore ||
+      messageLoadingMoreRef.current ||
+      messageState !== 'ready'
+    ) {
+      return
+    }
+
+    const generation = historyGenerationRef.current
+    messageLoadingMoreRef.current = true
+    setMessageLoadingMore(true)
+    setMessageMoreError('')
+    const anchor = { scrollHeight: scroll.scrollHeight, scrollTop: scroll.scrollTop }
+    try {
+      const response = await listMessages(conversationId, {
+        limit: messagePageSize,
+        before: oldestMessage.id,
+      })
+      if (generation !== historyGenerationRef.current || selectedIdRef.current !== conversationId) {
+        return
+      }
+      messageAnchorRef.current = anchor
+      setMessages((current) => prependUniqueById(current, response.list))
+      setMessageHasMore(response.has_more)
+    } catch (error: unknown) {
+      if (generation === historyGenerationRef.current && selectedIdRef.current === conversationId) {
+        setMessageMoreError(error instanceof Error ? error.message : '更早消息加载失败。')
+      }
+    } finally {
+      if (generation === historyGenerationRef.current) {
+        messageLoadingMoreRef.current = false
+        setMessageLoadingMore(false)
+      }
+    }
+  }, [messageHasMore, messageState, messages, selectedId])
 
   const loadKnowledgeConfig = useCallback(async () => {
     setKnowledgeState('loading')
@@ -203,22 +540,45 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
 
   useEffect(() => {
     if (!selectedId) {
+      selectedIdRef.current = null
+      historyGenerationRef.current += 1
       setMessages([])
       setMessageState('ready')
+      setMessageHasMore(false)
+      setMessageMoreError('')
       return
     }
+    selectedIdRef.current = selectedId
     if (skipHistoryForRef.current === selectedId) {
       skipHistoryForRef.current = null
       setMessageState('ready')
+      setMessageHasMore(false)
       return
     }
     void loadHistory(selectedId)
   }, [loadHistory, selectedId])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     hasMessagesRef.current = messages.length > 0
     const messageScroll = messageScrollRef.current
-    messageScroll?.scrollTo({ top: messageScroll.scrollHeight, behavior: 'smooth' })
+    if (!messageScroll) {
+      return
+    }
+    if (messageAnchorRef.current) {
+      const anchor = messageAnchorRef.current
+      messageAnchorRef.current = null
+      messageScroll.scrollTop = anchor.scrollTop + (messageScroll.scrollHeight - anchor.scrollHeight)
+      return
+    }
+    if (initialMessageScrollRef.current) {
+      initialMessageScrollRef.current = false
+      scrollToBottom(messageScroll)
+      autoFollowRef.current = true
+      return
+    }
+    if (autoFollowRef.current) {
+      scrollToBottom(messageScroll, 'smooth')
+    }
   }, [messages])
 
   useEffect(() => {
@@ -231,52 +591,46 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
   }, [])
 
   useEffect(() => {
-    if (!accountOpen) {
-      return
-    }
-
-    function closeAccountMenu(event: PointerEvent) {
-      if (!accountMenuRef.current?.contains(event.target as Node)) {
-        setAccountOpen(false)
-      }
-    }
-
-    function closeAccountMenuWithEscape(event: globalThis.KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setAccountOpen(false)
-      }
-    }
-
-    document.addEventListener('pointerdown', closeAccountMenu)
-    document.addEventListener('keydown', closeAccountMenuWithEscape)
-    return () => {
-      document.removeEventListener('pointerdown', closeAccountMenu)
-      document.removeEventListener('keydown', closeAccountMenuWithEscape)
-    }
-  }, [accountOpen])
-
-  useEffect(() => {
     if (!conversationMenuId) {
       return
     }
 
     function closeConversationMenu(event: PointerEvent) {
+      const target = event.target
+      if (
+        target instanceof Element &&
+        target.closest('[data-conversation-menu-trigger]')?.getAttribute('data-conversation-menu-trigger') === conversationMenuId
+      ) {
+        return
+      }
       if (!conversationMenuRef.current?.contains(event.target as Node)) {
         setConversationMenuId(null)
+        setConversationMenuPosition(null)
       }
     }
 
     function closeConversationMenuWithEscape(event: globalThis.KeyboardEvent) {
       if (event.key === 'Escape') {
         setConversationMenuId(null)
+        setConversationMenuPosition(null)
       }
     }
 
+    function closeConversationMenuForLayoutChange() {
+      setConversationMenuId(null)
+      setConversationMenuPosition(null)
+    }
+
+    const conversationList = viewportRootRef.current?.querySelector('.conversation-list')
     document.addEventListener('pointerdown', closeConversationMenu)
     document.addEventListener('keydown', closeConversationMenuWithEscape)
+    conversationList?.addEventListener('scroll', closeConversationMenuForLayoutChange)
+    window.addEventListener('resize', closeConversationMenuForLayoutChange)
     return () => {
       document.removeEventListener('pointerdown', closeConversationMenu)
       document.removeEventListener('keydown', closeConversationMenuWithEscape)
+      conversationList?.removeEventListener('scroll', closeConversationMenuForLayoutChange)
+      window.removeEventListener('resize', closeConversationMenuForLayoutChange)
     }
   }, [conversationMenuId])
 
@@ -409,14 +763,19 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
   function startNewConversation() {
     abortRef.current?.abort()
     abortRef.current = null
+    historyGenerationRef.current += 1
+    selectedIdRef.current = null
     setSelectedId(null)
     setMessages([])
     setMessageState('ready')
     setMessageError('')
+    setMessageHasMore(false)
+    setMessageMoreError('')
     setStreamState({ status: 'idle' })
     setAttachments([])
     setAttachmentError('')
     setConversationMenuId(null)
+    setConversationMenuPosition(null)
     setDrawerOpen(false)
     window.requestAnimationFrame(() => {
       const textarea = textareaRef.current
@@ -433,19 +792,69 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
     }
     abortRef.current?.abort()
     abortRef.current = null
+    historyGenerationRef.current += 1
+    initialMessageScrollRef.current = false
+    selectedIdRef.current = conversationId
     setStreamState({ status: 'idle' })
     setAttachments([])
     setAttachmentError('')
     setConversationMenuId(null)
+    setConversationMenuPosition(null)
+    setMessages([])
+    setMessageState('loading')
+    setMessageError('')
+    setMessageHasMore(false)
+    setMessageMoreError('')
     setSelectedId(conversationId)
     setDrawerOpen(false)
   }
 
   function beginRename(conversation: Conversation) {
     setConversationMenuId(null)
+    setConversationMenuPosition(null)
     setConversationActionError('')
     setRenameTitle(conversation.title || '新对话')
     setRenameTarget(conversation)
+  }
+
+  function toggleConversationMenu(
+    event: ReactMouseEvent<HTMLButtonElement>,
+    conversationId: string,
+  ) {
+    if (conversationMenuId === conversationId) {
+      setConversationMenuId(null)
+      setConversationMenuPosition(null)
+      return
+    }
+
+    const triggerRect = event.currentTarget.getBoundingClientRect()
+    const listRect = event.currentTarget.closest('.conversation-list')?.getBoundingClientRect()
+    const drawerRect = event.currentTarget.closest('.chat-drawer')?.getBoundingClientRect()
+    const boundaryTop = listRect?.top ?? conversationMenuEdge
+    const boundaryBottom = listRect?.bottom ?? window.innerHeight - conversationMenuEdge
+    const minimumTop = boundaryTop + conversationMenuEdge
+    const maximumTop = Math.max(
+      minimumTop,
+      boundaryBottom - conversationMenuHeight - conversationMenuEdge,
+    )
+    const belowTop = triggerRect.bottom + conversationMenuGap
+    const preferredTop = belowTop + conversationMenuHeight <= boundaryBottom - conversationMenuEdge
+      ? belowTop
+      : triggerRect.top - conversationMenuHeight - conversationMenuGap
+    const minimumLeft = (drawerRect?.left ?? 0) + conversationMenuEdge
+    const maximumLeft = Math.max(
+      minimumLeft,
+      (drawerRect?.right ?? window.innerWidth) - conversationMenuWidth - conversationMenuEdge,
+    )
+
+    setConversationMenuPosition({
+      top: Math.min(maximumTop, Math.max(minimumTop, preferredTop)),
+      left: Math.min(
+        maximumLeft,
+        Math.max(minimumLeft, triggerRect.right - conversationMenuWidth),
+      ),
+    })
+    setConversationMenuId(conversationId)
   }
 
   async function submitRename(event: FormEvent<HTMLFormElement>) {
@@ -484,12 +893,17 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
     try {
       await deleteConversation(deleteTarget.id)
       setConversations((current) => current.filter((conversation) => conversation.id !== deleteTarget.id))
+      setConversationTotal((current) => Math.max(0, current - 1))
       if (selectedId === deleteTarget.id) {
         abortRef.current?.abort()
         abortRef.current = null
+        historyGenerationRef.current += 1
+        selectedIdRef.current = null
         setSelectedId(null)
         setMessages([])
         setMessageState('ready')
+        setMessageHasMore(false)
+        setMessageMoreError('')
         setStreamState({ status: 'idle' })
         setAttachments([])
         setAttachmentError('')
@@ -566,6 +980,7 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
     setMessageError('')
     setMessageState('ready')
     setStreamState({ status: 'streaming' })
+    autoFollowRef.current = true
     setMessages((current) => [...current, userMessage, assistantMessage])
     let reachedTerminalEvent = false
 
@@ -583,9 +998,15 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
             const meta = event as { type: 'meta'; conversation_id: string; title: string }
             if (meta.conversation_id !== conversationIdAtSend) {
               skipHistoryForRef.current = meta.conversation_id
+              selectedIdRef.current = meta.conversation_id
               setSelectedId(meta.conversation_id)
             }
-            setConversations((current) => upsertConversation(current, meta))
+            setConversations((current) => {
+              if (!current.some((conversation) => conversation.id === meta.conversation_id)) {
+                setConversationTotal((total) => total + 1)
+              }
+              return upsertConversation(current, meta)
+            })
             return
           }
           if (event.type === 'token') {
@@ -593,13 +1014,14 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
             updateAssistant(assistantMessage.id, (message) => ({
               ...message,
               content: message.content + token.text,
+              parts: appendTokenPart(message.parts ?? [], token.text),
             }))
             return
           }
           if (event.type === 'tool_call' || event.type === 'tool_result') {
             updateAssistant(assistantMessage.id, (message) => ({
               ...message,
-              tools: updateTool(message.tools ?? [], event),
+              parts: appendToolPart(message.parts ?? [], event as ChatToolEvent),
             }))
             return
           }
@@ -673,6 +1095,21 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
     }
   }
 
+  function handleConversationListScroll(event: ReactUIEvent<HTMLDivElement>) {
+    const element = event.currentTarget
+    if (isNearBottom(element)) {
+      void loadMoreConversations()
+    }
+  }
+
+  function handleMessageScroll(event: ReactUIEvent<HTMLDivElement>) {
+    const element = event.currentTarget
+    autoFollowRef.current = isNearBottom(element)
+    if (element.scrollTop <= paginationThreshold) {
+      void loadOlderHistory()
+    }
+  }
+
   return (
     <main className="chat-app" ref={viewportRootRef}>
       <button
@@ -699,83 +1136,119 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
           <span>新对话</span>
         </button>
 
-        <div className="conversation-list" aria-label="历史会话">
-          <p className="conversation-list__label">最近对话</p>
-          {conversationState === 'loading' && (
-            <div className="conversation-skeleton" aria-label="正在加载会话">
-              <span />
-              <span />
-              <span />
-            </div>
-          )}
-          {conversationState === 'error' && (
-            <div className="drawer-error" role="alert">
-              <p>{conversationError}</p>
-              <button type="button" onClick={() => void loadConversations(false)}>
-                <ArrowClockwise size={16} /> 重试
-              </button>
-            </div>
-          )}
-          {conversationState === 'ready' && conversations.length === 0 && (
-            <p className="conversation-list__empty">发送第一条消息后，会话会保存在这里。</p>
-          )}
-          {conversations.map((conversation) => (
+        <section className="conversation-history" aria-labelledby="recent-conversations-label">
+          <p className="conversation-list__label" id="recent-conversations-label">最近对话</p>
+          <div className="conversation-list-frame">
             <div
-              className={conversation.id === selectedId ? 'conversation-row conversation-row--active' : 'conversation-row'}
-              key={conversation.id}
+              className="conversation-list"
+              ref={conversationListRef}
+              aria-label="历史会话"
+              onScroll={handleConversationListScroll}
             >
-              <button className="conversation-row__select" type="button" onClick={() => selectConversation(conversation.id)}>
-                <span>{conversation.title || '新对话'}</span>
-                <time dateTime={conversation.updated_at}>
-                  {new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(
-                    new Date(conversation.updated_at),
-                  )}
-                </time>
-              </button>
-              <div
-                className="conversation-row__menu-wrap"
-                ref={conversationMenuId === conversation.id ? conversationMenuRef : undefined}
-              >
-                <button
-                  className="conversation-row__menu-trigger"
-                  type="button"
-                  aria-label={`管理会话：${conversation.title || '新对话'}`}
-                  aria-expanded={conversationMenuId === conversation.id}
-                  onClick={() => setConversationMenuId((current) => current === conversation.id ? null : conversation.id)}
+              {conversationState === 'loading' && (
+                <div className="conversation-skeleton" aria-label="正在加载会话">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              )}
+              {conversationState === 'error' && (
+                <div className="drawer-error" role="alert">
+                  <p>{conversationError}</p>
+                  <button type="button" onClick={() => void loadConversations(false)}>
+                    <ArrowClockwise size={16} /> 重试
+                  </button>
+                </div>
+              )}
+              {conversationState === 'ready' && conversations.length === 0 && (
+                <p className="conversation-list__empty">发送第一条消息后，会话会保存在这里。</p>
+              )}
+              {conversations.map((conversation, index) => (
+                <div
+                  className={conversation.id === selectedId ? 'conversation-row conversation-row--active' : 'conversation-row'}
+                  key={conversation.id}
+                  style={{ '--conversation-index': index % conversationPageSize } as CSSProperties}
                 >
-                  <DotsThree size={18} weight="bold" />
-                </button>
-                {conversationMenuId === conversation.id && (
-                  <div className="conversation-row__menu" role="menu">
+                  <button className="conversation-row__select" type="button" onClick={() => selectConversation(conversation.id)}>
+                    <span>{conversation.title || '新对话'}</span>
+                    <time dateTime={conversation.updated_at}>
+                      {new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(
+                        new Date(conversation.updated_at),
+                      )}
+                    </time>
+                  </button>
+                  <div className="conversation-row__menu-wrap">
                     <button
+                      className="conversation-row__menu-trigger"
                       type="button"
-                      role="menuitem"
-                      disabled={streamState.status === 'streaming' && selectedId === conversation.id}
-                      onClick={() => beginRename(conversation)}
+                      aria-label={`管理会话：${conversation.title || '新对话'}`}
+                      aria-expanded={conversationMenuId === conversation.id}
+                      data-conversation-menu-trigger={conversation.id}
+                      onClick={(event) => toggleConversationMenu(event, conversation.id)}
                     >
-                      <PencilSimple size={16} /> 重命名
-                    </button>
-                    <button
-                      className="conversation-row__delete"
-                      type="button"
-                      role="menuitem"
-                      disabled={streamState.status === 'streaming' && selectedId === conversation.id}
-                      onClick={() => { setConversationMenuId(null); setConversationActionError(''); setDeleteTarget(conversation) }}
-                    >
-                      <Trash size={16} /> 删除
+                      <DotsThree size={18} weight="bold" />
                     </button>
                   </div>
-                )}
-              </div>
+                </div>
+              ))}
+              <div className="conversation-list__sentinel" aria-hidden="true" />
+              {conversationLoadingMore && (
+                <p className="pagination-status" role="status">正在加载更多会话…</p>
+              )}
+              {conversationMoreError && (
+                <div className="pagination-error" role="alert">
+                  <span>{conversationMoreError}</span>
+                  <button type="button" onClick={() => void loadMoreConversations()}>重试</button>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
+          </div>
+        </section>
 
         <div className="drawer-account">
           <span className="drawer-account__avatar">{displayName.slice(0, 1).toUpperCase()}</span>
-          <span className="drawer-account__name">{displayName}</span>
+          <span className="drawer-account__identity">
+            <span className="drawer-account__name">{displayName}</span>
+            <span className="drawer-account__username">@{session.user.username}</span>
+          </span>
+          <button className="drawer-account__logout" type="button" aria-label="退出登录" onClick={onLogout}>
+            <SignOut size={18} />
+          </button>
         </div>
       </aside>
+
+      {menuConversation && conversationMenuPosition && createPortal(
+        <div
+          className="conversation-row__menu"
+          ref={conversationMenuRef}
+          role="menu"
+          style={conversationMenuPosition}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            disabled={streamState.status === 'streaming' && selectedId === menuConversation.id}
+            onClick={() => beginRename(menuConversation)}
+          >
+            <PencilSimple size={16} /> 重命名
+          </button>
+          <button
+            className="conversation-row__delete"
+            type="button"
+            role="menuitem"
+            disabled={streamState.status === 'streaming' && selectedId === menuConversation.id}
+            onClick={() => {
+              setConversationMenuId(null)
+              setConversationMenuPosition(null)
+              setConversationActionError('')
+              setDeleteTarget(menuConversation)
+            }}
+          >
+            <Trash size={16} /> 删除
+          </button>
+        </div>,
+        document.body,
+      )}
 
       {renameTarget && (
         <div
@@ -830,29 +1303,17 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
 
       <section className="chat-workspace">
         <header className="chat-header">
-          <button className="icon-button chat-header__menu" type="button" aria-label="打开会话列表" onClick={() => { setAccountOpen(false); setDrawerOpen(true) }}>
+          <button className="icon-button chat-header__menu" type="button" aria-label="打开会话列表" onClick={() => setDrawerOpen(true)}>
             <List size={22} />
           </button>
           <div className="chat-header__title">
             <strong>{activeConversation?.title || '新对话'}</strong>
             <span>{streamState.status === 'streaming' ? 'Cove 正在回复' : 'Cove AI'}</span>
           </div>
-          <div className="account-menu" ref={accountMenuRef}>
-            <button className="icon-button" type="button" aria-label="打开账户菜单" aria-expanded={accountOpen} onClick={() => setAccountOpen((open) => !open)}>
+          <div className="account-menu">
+            <button className="icon-button account-menu__placeholder" type="button" aria-label="更多功能，暂不可用" disabled>
               <DotsThree size={24} weight="bold" />
             </button>
-            {accountOpen && (
-              <div className="account-menu__popover" role="menu">
-                <div>
-                  <strong>{displayName}</strong>
-                  <span>{session.user.email || `@${session.user.username}`}</span>
-                </div>
-                <button type="button" onClick={onLogout}>
-                  <SignOut size={18} />
-                  退出登录
-                </button>
-              </div>
-            )}
           </div>
         </header>
 
@@ -860,8 +1321,19 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
           className={isEmptyConversation ? 'message-scroll message-scroll--empty' : 'message-scroll'}
           ref={messageScrollRef}
           aria-busy={messageState === 'loading'}
+          onScroll={handleMessageScroll}
         >
           <div className="message-column" role="log" aria-live="polite" aria-relevant="additions text">
+            <div className="message-history-sentinel" aria-hidden="true" />
+            {messageLoadingMore && (
+              <p className="pagination-status message-history-status" role="status">正在加载更早消息…</p>
+            )}
+            {messageMoreError && (
+              <div className="pagination-error message-history-error" role="alert">
+                <span>{messageMoreError}</span>
+                <button type="button" onClick={() => void loadOlderHistory()}>重试</button>
+              </div>
+            )}
             {messageState === 'loading' && (
               <div className="message-skeleton" aria-label="正在加载消息">
                 <span />
@@ -895,44 +1367,16 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
                 </div>
               </div>
             )}
-            {messages.map((message) => (
+            {messageState === 'ready' && messages.map((message) => (
               <article className={`message message--${message.role}`} key={message.id}>
                 {message.role === 'assistant' && (
                   <img className="message__avatar" src={coveIcon} alt="Cove" />
                 )}
                 <div className="message__body">
-                  {message.tools && message.tools.length > 0 && (
-                    <div className="tool-activity">
-                      {message.tools.map((tool) => (
-                        <span className={`tool-activity__item tool-activity__item--${tool.status}`} key={tool.id}>
-                          {tool.status === 'running' ? '正在使用' : tool.status === 'error' ? '工具失败' : '已使用'} {tool.tool}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                   {message.role === 'assistant' ? (
-                    message.content ? (
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        skipHtml
-                        components={{
-                          a: ({ href, children }) => (
-                            <a href={href} target="_blank" rel="noreferrer noopener">
-                              {children}
-                            </a>
-                          ),
-                        }}
-                      >
-                        {message.content}
-                      </ReactMarkdown>
-                    ) : (
-                      message.pending && <span className="thinking-indicator" aria-label="Cove 正在思考"><i /><i /><i /></span>
-                    )
+                    <AssistantMessageContent message={message} />
                   ) : (
                     <p>{message.content}</p>
-                  )}
-                  {message.role === 'assistant' && message.pending && message.content && (
-                    <span className="stream-cursor" aria-hidden="true" />
                   )}
                 </div>
               </article>
@@ -981,7 +1425,6 @@ export function ChatScreen({ session, onLogout }: ChatScreenProps) {
                   focusComposerWithoutScroll(event.currentTarget)
                 }
               }}
-              onFocus={() => setAccountOpen(false)}
               onChange={(event) => handleDraftChange(event.target.value)}
               onKeyDown={handleComposerKeyDown}
             />

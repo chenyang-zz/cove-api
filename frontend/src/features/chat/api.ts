@@ -14,7 +14,17 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:800
 )
 const SESSION_STORAGE_KEY = 'cove.auth.session.v1'
 
-type ListResponse<T> = { list: T[] }
+export type PageListResponse<T> = {
+  list: T[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export type MessageListResponse = {
+  list: ChatMessage[]
+  has_more: boolean
+}
 
 function currentSession(): StoredSession | null {
   if (typeof window === 'undefined') {
@@ -31,13 +41,26 @@ function currentSession(): StoredSession | null {
   }
 }
 
-export function listConversations(): Promise<ListResponse<Conversation>> {
-  return authenticatedRequest<ListResponse<Conversation>>('/api/conversation')
+export function listConversations(
+  page = 1,
+  pageSize = 20,
+): Promise<PageListResponse<Conversation>> {
+  // The Gin route is registered as GET /api/conversation/. Requesting the
+  // slashless form returns a CORS-less 301 that WKWebView rejects.
+  const query = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  return authenticatedRequest<PageListResponse<Conversation>>(`/api/conversation/?${query}`)
 }
 
-export function listMessages(conversationId: string): Promise<ListResponse<ChatMessage>> {
-  return authenticatedRequest<ListResponse<ChatMessage>>(
-    `/api/conversation/${encodeURIComponent(conversationId)}/messages`,
+export function listMessages(
+  conversationId: string,
+  options: { limit?: number; before?: string } = {},
+): Promise<MessageListResponse> {
+  const query = new URLSearchParams({ limit: String(options.limit ?? 30) })
+  if (options.before) {
+    query.set('before', options.before)
+  }
+  return authenticatedRequest<MessageListResponse>(
+    `/api/conversation/${encodeURIComponent(conversationId)}/messages?${query}`,
   )
 }
 

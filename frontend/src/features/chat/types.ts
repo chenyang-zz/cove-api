@@ -18,9 +18,21 @@ export type ChatAttachment = {
 }
 
 export type MessageMetadata = {
-  image_keys?: string[]
-  sender_name?: string
+  image_keys?: string[] | null
+  sender_name?: string | null
+  parts?: MessagePart[] | null
   interrupted?: boolean
+}
+
+export type MessagePart = {
+  type: 'text' | 'tool_call' | 'tool_result' | string
+  text: string | null
+  tool: string | null
+  input: Record<string, unknown> | null
+  observation: string | null
+  error: string | null
+  iteration: number | null
+  tool_call_id: string | null
 }
 
 export type ChatMessage = {
@@ -34,7 +46,7 @@ export type ChatMessage = {
   feedback: string | null
   created_at: string
   pending?: boolean
-  tools?: ToolActivity[]
+  parts?: MessagePart[]
 }
 
 export type ChatStreamRequest = {
@@ -86,12 +98,6 @@ export type ChatStreamEvent =
   | ChatErrorEvent
   | ChatToolEvent
   | ChatUnknownEvent
-
-export type ToolActivity = {
-  id: string
-  tool: string
-  status: 'running' | 'complete' | 'error'
-}
 
 export type ResourceState = 'idle' | 'loading' | 'ready' | 'error'
 

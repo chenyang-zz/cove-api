@@ -54,15 +54,27 @@ beforeEach(() => {
 
 describe('chat API', () => {
   it('passes conversation and message requests through authenticatedRequest', async () => {
-    mocks.authenticatedRequest.mockResolvedValueOnce({ list: [{ id: 'conversation-1' }] })
-    await expect(listConversations()).resolves.toEqual({ list: [{ id: 'conversation-1' }] })
-    expect(mocks.authenticatedRequest).toHaveBeenNthCalledWith(1, '/api/conversation')
+    const conversations = {
+      list: [{ id: 'conversation-1' }],
+      total: 41,
+      page: 2,
+      page_size: 20,
+    }
+    mocks.authenticatedRequest.mockResolvedValueOnce(conversations)
+    await expect(listConversations(2, 20)).resolves.toEqual(conversations)
+    expect(mocks.authenticatedRequest).toHaveBeenNthCalledWith(
+      1,
+      '/api/conversation/?page=2&page_size=20',
+    )
 
-    mocks.authenticatedRequest.mockResolvedValueOnce({ list: [{ id: 'message-1' }] })
-    await expect(listMessages('conversation / 1')).resolves.toEqual({ list: [{ id: 'message-1' }] })
+    const messages = { list: [{ id: 'message-1' }], has_more: true }
+    mocks.authenticatedRequest.mockResolvedValueOnce(messages)
+    await expect(
+      listMessages('conversation / 1', { limit: 30, before: 'message-before' }),
+    ).resolves.toEqual(messages)
     expect(mocks.authenticatedRequest).toHaveBeenNthCalledWith(
       2,
-      '/api/conversation/conversation%20%2F%201/messages',
+      '/api/conversation/conversation%20%2F%201/messages?limit=30&before=message-before',
     )
   })
 

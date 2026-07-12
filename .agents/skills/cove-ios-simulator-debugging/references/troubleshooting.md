@@ -76,7 +76,7 @@ Do not fabricate sessions. If the target state requires authentication:
 3. Wait for the user to confirm completion.
 4. Re-read the visible screen or capture a screenshot before continuing.
 
-Use the same pattern for opening the software keyboard or reproducing a gesture that cannot be driven reliably through `simctl`.
+For non-sensitive keyboard, drawer, and scrolling interactions, use the Computer Use workflow in [computer-use.md](computer-use.md) first. Ask the user only when automation remains unreliable or the action requires credentials, sensitive data, deletion, or external submission.
 
 ## Keyboard and visual validation
 
@@ -114,4 +114,3 @@ Record these in the handoff:
 - Screenshot and recording paths
 - Test/build results
 - Remaining environment-only exceptions or packaging mismatches
-

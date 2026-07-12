@@ -1,4 +1,4 @@
 interface:
   display_name: "Cove iOS Simulator 调试"
-  short_description: "诊断 Cove iOS 构建、网络、键盘与视觉问题"
-  default_prompt: "使用 $cove-ios-simulator-debugging 调试 Cove 的 iOS Simulator 问题并采集验证证据。"
+  short_description: "诊断并自动验证 Cove iOS 构建、网络、键盘与视觉问题"
+  default_prompt: "使用 $cove-ios-simulator-debugging 调试 Cove 的 iOS Simulator 问题、自动执行安全交互并采集验证证据。"

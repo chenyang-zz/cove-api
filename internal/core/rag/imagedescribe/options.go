@@ -1,7 +1,7 @@
 package imagedescribe
 
 import (
-	"github.com/boxify/api-go/internal/core/jsonx"
+	corellm "github.com/boxify/api-go/internal/core/llm"
 	coreprompt "github.com/boxify/api-go/internal/core/prompt"
 	"github.com/boxify/api-go/internal/core/rag/imagecompress"
 	ragprompt "github.com/boxify/api-go/internal/core/rag/prompt"
@@ -18,7 +18,8 @@ type Options struct {
 	Prompt     string
 	MaxTokens  int64
 	Compressor Compressor
-	Parser     jsonx.Parser
+	// Vision 可选覆盖构造时传入的 corellm.VisionClient。
+	Vision corellm.VisionClient
 }
 
 // Option 修改 Describer 的长期配置。
@@ -51,11 +52,11 @@ func WithCompressor(compressor Compressor) Option {
 	}
 }
 
-// WithParser 设置模型 JSON 输出解析器。
-func WithParser(parser jsonx.Parser) Option {
+// WithVisionClient 覆盖默认注入的 corellm.VisionClient。
+func WithVisionClient(vision corellm.VisionClient) Option {
 	return func(opts *Options) {
-		if parser != nil {
-			opts.Parser = parser
+		if vision != nil {
+			opts.Vision = vision
 		}
 	}
 }
@@ -63,9 +64,4 @@ func WithParser(parser jsonx.Parser) Option {
 // defaultCompressor 返回图片描述默认使用的压缩器。
 func defaultCompressor() Compressor {
 	return imagecompress.NewCompressor()
-}
-
-// defaultParser 返回图片描述默认使用的 JSON 解析器。
-func defaultParser() jsonx.Parser {
-	return jsonx.NewParser()
 }

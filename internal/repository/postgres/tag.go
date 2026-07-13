@@ -195,6 +195,50 @@ func (r *TagRepository) SyncDocumentTags(ctx context.Context, userID uuid.UUID, 
 	return rows, nil
 }
 
+func (r *TagRepository) SyncImageTags(ctx context.Context, userID uuid.UUID, imageID uuid.UUID, names []string) ([]models.Tag, error) {
+	cleanNames := normalizeTagNames(names)
+	rows := make([]models.Tag, 0, len(cleanNames))
+
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var image models.Image
+		if err := tx.Where("id = ? AND user_id = ?", imageID, userID).First(&image).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return xerr.NotFound("图片不存在")
+			}
+			return xerr.Wrapf(err, "查询图片失败")
+		}
+
+		for _, name := range cleanNames {
+			var tag models.Tag
+			err := tx.Where("user_id = ? AND name = ?", userID, name).First(&tag).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				tag = models.Tag{
+					ID:     uuid.New(),
+					UserID: userID,
+					Name:   name,
+					Color:  "#155EEF",
+				}
+				if err := tx.Create(&tag).Error; err != nil {
+					return xerr.Wrapf(err, "创建标签失败")
+				}
+			} else if err != nil {
+				return xerr.Wrapf(err, "查询标签失败")
+			}
+			rows = append(rows, tag)
+		}
+
+		// 用 Replace 保证 image_tags 与当前解析出的标签集合保持一致，同时保留 tags 主表记录。
+		if err := tx.Model(&image).Association("Tags").Replace(rows); err != nil {
+			return xerr.Wrapf(err, "同步图片标签失败")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (r *TagRepository) ListDocumentIDsByTag(ctx context.Context, userID uuid.UUID, tagID uuid.UUID) ([]uuid.UUID, error) {
 	var rows []tagDocumentIDRow
 	err := r.db.WithContext(ctx).

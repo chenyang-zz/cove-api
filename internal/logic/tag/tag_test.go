@@ -126,6 +126,10 @@ func (r *fakeTagRepository) UpdateFields(ctx context.Context, userID uuid.UUID, 
 	return existing, nil
 }
 
+func (r *fakeTagRepository) SyncImageTags(ctx context.Context, userID uuid.UUID, imageID uuid.UUID, names []string) ([]models.Tag, error) {
+	return nil, nil
+}
+
 func (r *fakeTagRepository) SyncDocumentTags(ctx context.Context, userID uuid.UUID, documentID uuid.UUID, names []string) ([]models.Tag, error) {
 	return nil, errors.New("not used")
 }
@@ -179,6 +183,10 @@ func (r *fakeTagRAGChunkRepository) EnsureIndex(ctx context.Context, embeddingDi
 }
 
 func (r *fakeTagRAGChunkRepository) IndexDocumentChunks(ctx context.Context, document *models.Document, chunks []*ragchunker.Chunk, vectors [][]float64) error {
+	return nil
+}
+
+func (r *fakeTagRAGChunkRepository) IndexImageChunk(ctx context.Context, image *models.Image, content string, vector []float64) error {
 	return nil
 }
 

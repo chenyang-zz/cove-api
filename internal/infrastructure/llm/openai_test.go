@@ -511,3 +511,89 @@ func TestOpenAIClientEmbedSplitsRequestsByBatchSize(t *testing.T) {
 		}
 	}
 }
+
+// 验证 OpenAI Vision 会发送多模态 chat/completions 请求（text + image_url data URL）。
+func TestOpenAIClientVisionSendsImageURL(t *testing.T) {
+	var requestBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"a cat"}}]}`))
+	}))
+	defer server.Close()
+
+	client := infra.NewOpenaiLLMClient("sk-test", "vision-model", infra.WithBaseURL(server.URL+"/v1"))
+	vision, ok := client.(corellm.VisionClient)
+	if !ok {
+		t.Fatal("openai client does not implement VisionClient")
+	}
+	got, err := vision.Vision(
+		context.Background(),
+		"describe",
+		"YWJj",
+		"image/png",
+		corellm.WithTemperature(0.2),
+		corellm.WithTopP(0.9),
+		corellm.WithMaxTokens(256),
+	)
+	if err != nil {
+		t.Fatalf("Vision error = %v", err)
+	}
+	if got == nil || got.Text != "a cat" || got.Description.Description != "a cat" {
+		t.Fatalf("Vision = %#v, want structured fallback description a cat", got)
+	}
+	if requestBody["model"] != "vision-model" ||
+		requestBody["max_tokens"] != float64(256) ||
+		requestBody["temperature"] != float64(0.2) ||
+		requestBody["top_p"] != float64(0.9) {
+		t.Fatalf("request body = %#v", requestBody)
+	}
+	messages, ok := requestBody["messages"].([]any)
+	if !ok || len(messages) != 1 {
+		t.Fatalf("messages = %#v", requestBody["messages"])
+	}
+	msg, ok := messages[0].(map[string]any)
+	if !ok {
+		t.Fatalf("message = %#v", messages[0])
+	}
+	content, ok := msg["content"].([]any)
+	if !ok || len(content) != 2 {
+		t.Fatalf("content = %#v, want text and image parts", msg["content"])
+	}
+	encoded, _ := json.Marshal(content)
+	body := string(encoded)
+	if !strings.Contains(body, `"type":"text"`) || !strings.Contains(body, "describe") {
+		t.Fatalf("content = %s, want text prompt", body)
+	}
+	if !strings.Contains(body, `"type":"image_url"`) || !strings.Contains(body, "data:image/png;base64,YWJj") {
+		t.Fatalf("content = %s, want image_url data URL", body)
+	}
+}
+
+// 验证 OpenAI Vision 未传 option 时使用聊天默认温度与看图默认 max_tokens。
+func TestOpenAIClientVisionUsesDefaultChatAndVisionOptions(t *testing.T) {
+	var requestBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer server.Close()
+
+	client := infra.NewOpenaiLLMClient("sk-test", "vision-model", infra.WithBaseURL(server.URL+"/v1"))
+	vision := client.(corellm.VisionClient)
+	if _, err := vision.Vision(context.Background(), "describe", "YWJj", "image/jpeg"); err != nil {
+		t.Fatalf("Vision error = %v", err)
+	}
+	if requestBody["temperature"] != float64(corellm.DefaultTemperature) {
+		t.Fatalf("temperature = %#v, want default %v", requestBody["temperature"], corellm.DefaultTemperature)
+	}
+	if requestBody["max_tokens"] != float64(corellm.DefaultVisionMaxTokens) {
+		t.Fatalf("max_tokens = %#v, want default %d", requestBody["max_tokens"], corellm.DefaultVisionMaxTokens)
+	}
+}
+

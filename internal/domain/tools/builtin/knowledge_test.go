@@ -415,6 +415,10 @@ func (r *fakeKnowledgeToolTagRepo) UpdateFields(ctx context.Context, userID uuid
 	return row, nil
 }
 
+func (r *fakeKnowledgeToolTagRepo) SyncImageTags(ctx context.Context, userID uuid.UUID, imageID uuid.UUID, names []string) ([]models.Tag, error) {
+	return nil, nil
+}
+
 func (r *fakeKnowledgeToolTagRepo) SyncDocumentTags(ctx context.Context, userID uuid.UUID, documentID uuid.UUID, names []string) ([]models.Tag, error) {
 	return nil, nil
 }

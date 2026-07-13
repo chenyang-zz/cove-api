@@ -254,3 +254,45 @@ func TestRAGChunkRepositoryDecodeSourceReturnsModelSource(t *testing.T) {
 		t.Fatalf("DecodeSource source = %#v, want decoded model source", source)
 	}
 }
+
+// 验证图片 chunk 写入使用 image source_type，并复用 document_id 存图片 ID。
+func TestRAGChunkRepositoryIndexImageChunk(t *testing.T) {
+	userID := uuid.New()
+	imageID := uuid.New()
+	kbID := uuid.New()
+	var indexed models.RAGChunkDocument
+	var docID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Elastic-Product", "Elasticsearch")
+		if r.Method != http.MethodPut || !strings.HasPrefix(r.URL.Path, "/boxify_chunks/_doc/") {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		docID = strings.TrimPrefix(r.URL.Path, "/boxify_chunks/_doc/")
+		if err := json.NewDecoder(r.Body).Decode(&indexed); err != nil {
+			t.Fatalf("decode index body: %v", err)
+		}
+		_, _ = w.Write([]byte(`{"result":"created"}`))
+	}))
+	defer server.Close()
+	client, err := infraes.NewClient(infraes.Config{URL: server.URL})
+	if err != nil {
+		t.Fatalf("NewClient error = %v", err)
+	}
+	image := &models.Image{
+		ID: imageID, UserID: userID, KBID: &kbID, FileName: "cat.png",
+		Tags: []models.Tag{{Name: "风景"}},
+	}
+	if err := repositoryes.NewRAGChunkRepository(client, "").IndexImageChunk(context.Background(), image, "一只猫", []float64{0.1, 0.2, 0.3}); err != nil {
+		t.Fatalf("IndexImageChunk error = %v", err)
+	}
+	if indexed.DocumentID != imageID.String() || indexed.UserID != userID.String() || indexed.KBID != kbID.String() {
+		t.Fatalf("indexed ownership = %#v", indexed)
+	}
+	if indexed.SourceType != "image" || indexed.DocName != "cat.png" || indexed.Content != "一只猫" || indexed.Level != "parent" {
+		t.Fatalf("indexed body = %#v", indexed)
+	}
+	if docID == "" || indexed.ChunkID == "" || indexed.ChunkID != docID {
+		t.Fatalf("chunk id path=%q body=%q", docID, indexed.ChunkID)
+	}
+}
+

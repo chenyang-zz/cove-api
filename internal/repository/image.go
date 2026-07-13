@@ -76,6 +76,10 @@ func (f *ImageUpdateFields) Status() *ImageUpdateFields {
 	return f.add("status")
 }
 
+func (f *ImageUpdateFields) Progress() *ImageUpdateFields {
+	return f.add("progress")
+}
+
 func (f *ImageUpdateFields) ErrorMsg() *ImageUpdateFields {
 	return f.add("error_msg")
 }

@@ -22,6 +22,8 @@ func (r *Registry) Register(router queue.Router) {
 		switch taskName {
 		case types.TaskParseDocument:
 			router.Handle(taskName, queue.HandlerFunc(NewParseDocumentTask(r.svcCtx).Handle))
+		case types.TaskParseImage:
+			router.Handle(taskName, queue.HandlerFunc(NewParseImageTask(r.svcCtx).Handle))
 		default:
 			router.Handle(taskName, queue.HandlerFunc(NewPlaceholderTask().Handle))
 		}

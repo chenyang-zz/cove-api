@@ -416,6 +416,77 @@ func (c *openaiLLMClient) EmbedOne(ctx context.Context, text string, dimensions 
 	return vecs[0], nil
 }
 
+// Vision 使用 OpenAI 兼容的 chat/completions 多模态接口描述图片。
+//
+// 可选参数复用通用聊天 ModelCallOption（温度、TopP、MaxTokens、工具等）。
+// 返回结构化 VisionResult，Description 由 corellm.ParseVisionDescription 规整。
+func (c *openaiLLMClient) Vision(ctx context.Context, prompt string, imageBase64 string, mime string, opts ...corellm.ModelCallOption) (*corellm.VisionResult, error) {
+	if err := c.validateChatConfig(); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(imageBase64) == "" {
+		return nil, xerr.BadRequest("图片内容不能为空")
+	}
+	mime = strings.TrimSpace(mime)
+	if mime == "" {
+		mime = "image/jpeg"
+	}
+	dataURL := "data:" + mime + ";base64," + imageBase64
+	// 复用聊天参数合并逻辑，并补上 client 级默认温度。
+	chatCallOpts := make([]corellm.ModelCallOption, 0, len(opts)+1)
+	if c.defaultTemperature != nil {
+		chatCallOpts = append(chatCallOpts, corellm.WithTemperature(*c.defaultTemperature))
+	}
+	chatCallOpts = append(chatCallOpts, opts...)
+	chatOpts := corellm.NewVisionOptions(chatCallOpts...)
+
+	params := openai.ChatCompletionNewParams{
+		Model: openai.ChatModel(c.model),
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage([]openai.ChatCompletionContentPartUnionParam{
+				openai.TextContentPart(prompt),
+				openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
+					URL: dataURL,
+				}),
+			}),
+		},
+	}
+	if chatOpts.Temperature != nil {
+		params.Temperature = openai.Float(*chatOpts.Temperature)
+	}
+	if chatOpts.TopP != nil {
+		params.TopP = openai.Float(*chatOpts.TopP)
+	}
+	if chatOpts.MaxTokens != nil {
+		params.MaxTokens = openai.Int(*chatOpts.MaxTokens)
+	}
+	params.Tools = toOpenAITools(chatOpts.Tools)
+	params.ToolChoice = toOpenAIToolChoice(chatOpts.ToolChoice)
+
+	resp, err := c.client.Chat.Completions.New(ctx, params)
+	if err != nil {
+		return nil, xerr.Wrapf(err, "请求多模态模型接口失败")
+	}
+	if resp == nil || len(resp.Choices) == 0 {
+		return nil, xerr.Internal("多模态模型返回为空", nil)
+	}
+	text := resp.Choices[0].Message.Content
+	return &corellm.VisionResult{
+		Description: corellm.ParseVisionDescription(text),
+		Text:        text,
+		Model:       resp.Model,
+		Provider:    "openai",
+		ID:          resp.ID,
+		StopReason:  resp.Choices[0].FinishReason,
+		Usage: corellm.TokenUsage{
+			InputTokens:  resp.Usage.PromptTokens,
+			OutputTokens: resp.Usage.CompletionTokens,
+			TotalTokens:  resp.Usage.TotalTokens,
+		},
+		RawJSON: resp.RawJSON(),
+	}, nil
+}
+
 func (c *openaiLLMClient) validateChatConfig() error {
 	if c.apiKey == "" {
 		return xerr.Internal("模型 API Key 未配置", nil)

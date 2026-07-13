@@ -1170,6 +1170,10 @@ func (r *testTagRepository) SyncDocumentTags(ctx context.Context, userID uuid.UU
 	return nil, nil
 }
 
+func (r *testTagRepository) SyncImageTags(ctx context.Context, userID uuid.UUID, imageID uuid.UUID, names []string) ([]models.Tag, error) {
+	return nil, nil
+}
+
 func (r *testTagRepository) ListDocumentIDsByTag(ctx context.Context, userID uuid.UUID, tagID uuid.UUID) ([]uuid.UUID, error) {
 	return append([]uuid.UUID(nil), r.documentIDsByTag[tagID]...), nil
 }
@@ -1224,6 +1228,10 @@ func (r *testRAGChunkRepository) EnsureIndex(ctx context.Context, embeddingDim i
 }
 
 func (r *testRAGChunkRepository) IndexDocumentChunks(ctx context.Context, document *models.Document, chunks []*ragchunker.Chunk, vectors [][]float64) error {
+	return nil
+}
+
+func (r *testRAGChunkRepository) IndexImageChunk(ctx context.Context, image *models.Image, content string, vector []float64) error {
 	return nil
 }
 

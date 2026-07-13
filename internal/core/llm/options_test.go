@@ -75,6 +75,28 @@ func TestNewChatOptionsWithToolsClonesDescriptors(t *testing.T) {
 	}
 }
 
+// 验证 NewVisionOptions 复用聊天默认温度，并在未设置 MaxTokens 时回落看图默认值。
+func TestNewVisionOptionsReusesChatDefaultsAndMaxTokensFallback(t *testing.T) {
+	defaults := NewVisionOptions()
+	if defaults.Temperature == nil || *defaults.Temperature != DefaultTemperature {
+		t.Fatalf("NewVisionOptions().Temperature = %v, want %v", defaults.Temperature, DefaultTemperature)
+	}
+	if defaults.MaxTokens == nil || *defaults.MaxTokens != DefaultVisionMaxTokens {
+		t.Fatalf("NewVisionOptions().MaxTokens = %v, want %d", defaults.MaxTokens, DefaultVisionMaxTokens)
+	}
+
+	overridden := NewVisionOptions(WithTemperature(0.2), WithTopP(0.9), WithMaxTokens(256))
+	if overridden.Temperature == nil || *overridden.Temperature != 0.2 {
+		t.Fatalf("NewVisionOptions().Temperature = %v, want 0.2", overridden.Temperature)
+	}
+	if overridden.TopP == nil || *overridden.TopP != 0.9 {
+		t.Fatalf("NewVisionOptions().TopP = %v, want 0.9", overridden.TopP)
+	}
+	if overridden.MaxTokens == nil || *overridden.MaxTokens != 256 {
+		t.Fatalf("NewVisionOptions().MaxTokens = %v, want 256", overridden.MaxTokens)
+	}
+}
+
 // 验证工具选择 option 会输出预期策略，并忽略空工具名。
 func TestNewChatOptionsWithToolChoice(t *testing.T) {
 	cases := []struct {

@@ -3,15 +3,9 @@ package imagedescribe
 import (
 	"context"
 
+	corellm "github.com/boxify/api-go/internal/core/llm"
 	"github.com/boxify/api-go/internal/core/rag/imagecompress"
 )
-
-// VisionClient 定义图片描述所需的最小视觉模型能力。
-//
-// Describe 接收最终提示词、base64 图片、MIME 和最大 token 数，返回模型原文。
-type VisionClient interface {
-	Describe(ctx context.Context, prompt string, imageBase64 string, mime string, maxTokens int64) (string, error)
-}
 
 // Compressor 定义图片描述前的压缩能力。
 type Compressor interface {
@@ -26,12 +20,12 @@ type Input struct {
 	FileExt string
 }
 
-// Description 表示模型生成的结构化图片描述。
+// Description 是看图结构化描述的业务别名，契约与 corellm.VisionDescription 对齐。
+type Description = corellm.VisionDescription
+
+// DescriberAPI 表示可被 worker 等调用方注入的描述能力。
 //
-// Description 是主要描述文本，OCRText 是识别出的文字，Objects 是对象列表，Scene 是简短场景标签。
-type Description struct {
-	Description string   `json:"description"`
-	OCRText     string   `json:"ocr_text"`
-	Objects     []string `json:"objects"`
-	Scene       string   `json:"scene"`
+// *Describer 实现该接口；测试可替换为本地 fake。
+type DescriberAPI interface {
+	Describe(ctx context.Context, input Input) (*Description, error)
 }

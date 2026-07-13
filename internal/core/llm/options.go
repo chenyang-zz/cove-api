@@ -9,9 +9,14 @@ import (
 const (
 	// DefaultTemperature 是聊天模型调用在缺少上层配置时使用的安全默认温度。
 	DefaultTemperature = 0.7
+	// DefaultVisionMaxTokens 是多模态看图调用在未显式设置 MaxTokens 时的默认最大输出 token 数。
+	DefaultVisionMaxTokens int64 = 1024
 )
 
 // ModelCallOptions 表示一次模型生成调用的可选参数。
+//
+// 聊天补全与多模态看图（Vision）共用这组参数：Temperature、TopP、MaxTokens，
+// 以及 Tools / ToolChoice（若 provider 支持）。
 type ModelCallOptions struct {
 	Temperature *float64
 	TopP        *float64
@@ -39,6 +44,18 @@ func NewChatOptions(opts ...ModelCallOption) ModelCallOptions {
 		if opt != nil {
 			opt(&out)
 		}
+	}
+	return out
+}
+
+// NewVisionOptions 返回合并后的多模态看图调用参数。
+//
+// 复用 NewChatOptions 的温度等默认值；未显式设置 MaxTokens 时回落到 DefaultVisionMaxTokens。
+func NewVisionOptions(opts ...ModelCallOption) ModelCallOptions {
+	out := NewChatOptions(opts...)
+	if out.MaxTokens == nil {
+		maxTokens := DefaultVisionMaxTokens
+		out.MaxTokens = &maxTokens
 	}
 	return out
 }

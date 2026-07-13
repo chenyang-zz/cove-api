@@ -62,6 +62,43 @@ func (r *RAGChunkRepository) IndexDocumentChunks(ctx context.Context, doc *model
 	return nil
 }
 
+// IndexImageChunk 索引图片描述 chunk。
+//
+// document_id 字段复用为图片 ID，便于 DeleteByDocument / UpdateTags 统一按来源清理。
+func (r *RAGChunkRepository) IndexImageChunk(ctx context.Context, image *models.Image, content string, vector []float64) error {
+	if image == nil {
+		return xerr.Internal("图片为空", nil)
+	}
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return xerr.Internal("图片描述内容为空", nil)
+	}
+	if len(vector) == 0 {
+		return xerr.Internal("图片向量为空", nil)
+	}
+	kbID := ""
+	if image.KBID != nil {
+		kbID = image.KBID.String()
+	}
+	chunkID := deterministicImageChunkID(image.ID).String()
+	doc := models.RAGChunkDocument{
+		ChunkID:    chunkID,
+		DocumentID: image.ID.String(),
+		UserID:     image.UserID.String(),
+		KBID:       kbID,
+		DocName:    image.FileName,
+		SourceType: "image",
+		Content:    content,
+		Level:      "parent",
+		Tags:       documentTagNames(image.Tags),
+		Vector:     vector,
+	}
+	if _, err := r.client.Index(ctx, r.index, chunkID, doc); err != nil {
+		return err
+	}
+	return nil
+}
+
 // DeleteByDocument 根据文档删除
 func (r *RAGChunkRepository) DeleteByDocument(ctx context.Context, userID uuid.UUID, documentID uuid.UUID) error {
 	_, err := r.client.DeleteByQuery(ctx, r.index, map[string]any{
@@ -264,4 +301,9 @@ func documentTagNames(rows []models.Tag) []string {
 // deterministicChunkID 确定性 chunk ID
 func deterministicChunkID(documentID uuid.UUID, parentIndex int, childIndex int) uuid.UUID {
 	return uuid.NewSHA1(uuid.NameSpaceURL, []byte(fmt.Sprintf("boxify:document:%s:%d:%d", documentID.String(), parentIndex, childIndex)))
+}
+
+// deterministicImageChunkID 生成图片描述 chunk 的确定性 ID。
+func deterministicImageChunkID(imageID uuid.UUID) uuid.UUID {
+	return uuid.NewSHA1(uuid.NameSpaceURL, []byte(fmt.Sprintf("boxify:image:%s:0", imageID.String())))
 }

@@ -24,14 +24,15 @@ type Image struct {
 	FileExt     string     `gorm:"column:file_ext;size:16;not null"`
 	FileSize    int64      `gorm:"column:file_size;not null"`
 	FileKey     string     `gorm:"column:file_key;size:512;not null"`
-	Description *string    `gorm:"column:description;type:text"`                           // AI 详细描述
-	OCRText     *string    `gorm:"column:ocr_text;type:text"`                              // 图中文字
-	Objects     JSONMaps   `gorm:"column:objects;type:jsonb"`                              // 物体列表
-	Scene       *string    `gorm:"column:scene;size:256"`                                  // 场景
-	Status      string     `gorm:"column:status;size:16;not null;default:'pending';index"` // pending | processing | done | failed
-	ErrorMsg    *string    `gorm:"column:error_msg;type:text"`
-	CreatedAt   time.Time  `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt   time.Time  `gorm:"column:updated_at;autoUpdateTime"`
+	Description *string     `gorm:"column:description;type:text"`                           // AI 详细描述
+	OCRText     *string     `gorm:"column:ocr_text;type:text"`                              // 图中文字
+	Objects     JSONStrings `gorm:"column:objects;type:jsonb"`                              // 物体列表（字符串数组）
+	Scene       *string     `gorm:"column:scene;size:256"`                                  // 场景
+	Status      string      `gorm:"column:status;size:16;not null;default:'pending';index"` // pending | processing | done | failed
+	Progress    float64     `gorm:"column:progress;not null;default:0"`                     // 解析进度 0~1
+	ErrorMsg    *string     `gorm:"column:error_msg;type:text"`
+	CreatedAt   time.Time   `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt   time.Time   `gorm:"column:updated_at;autoUpdateTime"`
 
 	User          User          `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE"`
 	KnowledgeBase KnowledgeBase `gorm:"foreignKey:KBID;references:ID;constraint:OnDelete:CASCADE"`

@@ -165,6 +165,23 @@ func (r *fakeTagRepository) SyncDocumentTags(ctx context.Context, userID uuid.UU
 	return rows, nil
 }
 
+func (r *fakeTagRepository) SyncImageTags(ctx context.Context, userID uuid.UUID, imageID uuid.UUID, names []string) ([]models.Tag, error) {
+	if r.events != nil {
+		*r.events = append(*r.events, "pg:sync_image_tags")
+	}
+	r.syncedUserID = userID
+	r.syncedDocumentID = imageID
+	r.syncedNames = append([]string(nil), names...)
+	if r.syncErr != nil {
+		return nil, r.syncErr
+	}
+	rows := make([]models.Tag, 0, len(names))
+	for _, name := range names {
+		rows = append(rows, models.Tag{ID: uuid.New(), UserID: userID, Name: name, Color: "#155EEF"})
+	}
+	return rows, nil
+}
+
 func (r *fakeTagRepository) ListDocumentIDsByTag(ctx context.Context, userID uuid.UUID, tagID uuid.UUID) ([]uuid.UUID, error) {
 	return nil, nil
 }

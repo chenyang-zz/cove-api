@@ -19,8 +19,17 @@ type Client interface {
 	Embed(ctx context.Context, texts []string, dimensions int, opts ...EmbeddingOption) ([][]float64, error)
 	// EmbedOne 生成单条文本向量。
 	EmbedOne(ctx context.Context, text string, dimensions int) ([]float64, error)
-	// Vision(ctxt context.Context, prompt string) (string, error)
 	// Rerank(ctx context.Context, query string, documents []string, top_n int) error
+}
+
+// VisionClient 表示支持图片多模态描述的模型客户端。
+//
+// prompt 为文本指令，imageBase64 为图片原始字节的 base64 编码（不含 data URL 前缀），
+// mime 为图片 MIME。可选参数复用通用聊天 ModelCallOption，例如 WithTemperature、
+// WithTopP、WithMaxTokens；未指定 MaxTokens 时实现可使用 DefaultVisionMaxTokens。
+// 返回值为结构化 VisionResult，其中 Description 已按看图契约规整。
+type VisionClient interface {
+	Vision(ctx context.Context, prompt string, imageBase64 string, mime string, opts ...ModelCallOption) (*VisionResult, error)
 }
 
 // ToolCallingClient 表示支持原生工具调用的模型客户端。

@@ -4,57 +4,50 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"strings"
 
+	corellm "github.com/boxify/api-go/internal/core/llm"
 	"github.com/boxify/api-go/internal/core/rag/imagecompress"
-	"github.com/boxify/api-go/internal/core/valuex"
 )
 
-const (
-	maxDescriptionRunes = 2000
-	maxOCRTextRunes     = 2000
-	maxSceneRunes       = 64
-)
-
-// Describer 压缩图片并调用视觉模型生成结构化描述。
+// Describer 压缩图片并调用 corellm.VisionClient 生成结构化描述。
 //
-// Describer 不绑定具体模型 SDK；调用方通过 VisionClient 适配外部服务。
+// Describer 不绑定具体模型 SDK；默认直接使用 corellm.VisionClient，无需外部适配器。
+// 可通过 WithVisionClient 在构造后覆盖，或直接向 NewDescriber 传入自定义 VisionClient。
 type Describer struct {
 	Options
-	client VisionClient
+	vision corellm.VisionClient
 }
 
 // NewDescriber 创建图片描述器。
 //
-// client 为 nil 时构造仍会成功，后续 Describe 会返回明确错误，便于测试或延迟注入。
-func NewDescriber(client VisionClient, opts ...Option) *Describer {
+// vision 为 nil 时构造仍会成功，后续 Describe 会返回明确错误，便于测试或延迟注入。
+func NewDescriber(vision corellm.VisionClient, opts ...Option) *Describer {
 	describer := &Describer{
 		Options: Options{
 			Prompt:     defaultPrompt,
 			MaxTokens:  defaultMaxTokens,
 			Compressor: defaultCompressor(),
-			Parser:     defaultParser(),
 		},
-		client: client,
+		vision: vision,
 	}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(&describer.Options)
 		}
 	}
+	// Option 可覆盖 vision（自定义客户端）。
+	if describer.Options.Vision != nil {
+		describer.vision = describer.Options.Vision
+	}
 	return describer
 }
 
 // Describe 根据图片内容生成结构化描述。
 //
-// Describe 会先压缩图片，再把 base64 图片和 MIME 传给 VisionClient。
-// VisionClient、Parser 或 Compressor 未配置时返回错误；模型输出不是 JSON 时用原文作为 Description 兜底。
+// Describe 会先压缩图片，再调用 VisionClient；返回的 Description 来自 VisionResult 的结构化字段。
 func (d *Describer) Describe(ctx context.Context, input Input) (*Description, error) {
-	if d == nil || d.client == nil {
+	if d == nil || d.vision == nil {
 		return nil, errors.New("rag image describer vision client is nil")
-	}
-	if d.Parser == nil {
-		return nil, errors.New("rag image describer json parser is nil")
 	}
 	if d.Compressor == nil {
 		return nil, errors.New("rag image describer compressor is nil")
@@ -70,48 +63,17 @@ func (d *Describer) Describe(ctx context.Context, input Input) (*Description, er
 
 	// 多模态接口通常接收 base64 图片内容；压缩器负责控制体积和 MIME。
 	imageBase64 := base64.StdEncoding.EncodeToString(compressed.Data)
-	answer, err := d.client.Describe(ctx, d.Prompt, imageBase64, compressed.MIME, d.MaxTokens)
+	opts := make([]corellm.ModelCallOption, 0, 1)
+	if d.MaxTokens > 0 {
+		opts = append(opts, corellm.WithMaxTokens(d.MaxTokens))
+	}
+	result, err := d.vision.Vision(ctx, d.Prompt, imageBase64, compressed.MIME, opts...)
 	if err != nil {
 		return nil, err
 	}
-
-	return d.parse(answer), nil
-}
-
-type rawDescription struct {
-	Description any `json:"description"`
-	OCRText     any `json:"ocr_text"`
-	Objects     any `json:"objects"`
-	Scene       any `json:"scene"`
-}
-
-func (d *Describer) parse(answer string) *Description {
-	var raw rawDescription
-	if err := d.Parser.Unmarshal(answer, &raw); err != nil {
-		// 模型没有按 JSON 返回时，将原文作为描述兜底，避免上层丢失可检索文本。
-		return &Description{
-			Description: truncate(answer, maxDescriptionRunes),
-			Objects:     []string{},
-		}
+	if result == nil {
+		return nil, errors.New("rag image describer vision result is nil")
 	}
-
-	// 字段规整集中处理：裁剪长文本，只保留 objects 中的字符串，隔离模型输出的不稳定类型。
-	return &Description{
-		Description: truncate(valuex.String(raw.Description), maxDescriptionRunes),
-		OCRText:     truncate(valuex.String(raw.OCRText), maxOCRTextRunes),
-		Objects:     valuex.StringList(raw.Objects),
-		Scene:       truncate(valuex.String(raw.Scene), maxSceneRunes),
-	}
-}
-
-func truncate(text string, maxRunes int) string {
-	text = strings.TrimSpace(text)
-	if maxRunes <= 0 {
-		return ""
-	}
-	runes := []rune(text)
-	if len(runes) <= maxRunes {
-		return text
-	}
-	return string(runes[:maxRunes])
+	desc := result.Description
+	return &desc, nil
 }

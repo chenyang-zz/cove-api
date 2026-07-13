@@ -13,20 +13,21 @@ import (
 )
 
 type ImageResponse struct {
-	ID          uuid.UUID      `json:"id"`
-	KBID        *uuid.UUID     `json:"kb_id"`
-	FileName    string         `json:"file_name"`
-	FileExt     string         `json:"file_ext"`
-	FileSize    int64          `json:"file_size"`
-	Url         string         `json:"url"`
-	Description string         `json:"description"`
-	Objects     map[string]any `json:"objects"`
-	Scene       *string        `json:"scene"`
-	Tags        []string       `json:"tags"`
-	Status      string         `json:"status"`
-	ErrorMsg    *string        `json:"error_msg"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
+	ID          uuid.UUID  `json:"id"`
+	KBID        *uuid.UUID `json:"kb_id"`
+	FileName    string     `json:"file_name"`
+	FileExt     string     `json:"file_ext"`
+	FileSize    int64      `json:"file_size"`
+	Url         string     `json:"url"`
+	Description string     `json:"description"`
+	Objects     []string   `json:"objects"`
+	Scene       *string    `json:"scene"`
+	Tags        []string   `json:"tags"`
+	Status      string     `json:"status"`
+	Progress    float64    `json:"progress"`
+	ErrorMsg    *string    `json:"error_msg"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 type SearchImageResponse struct {

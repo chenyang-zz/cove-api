@@ -387,6 +387,10 @@ func (r *fakeRAGChunkRepository) IndexDocumentChunks(ctx context.Context, docume
 	return nil
 }
 
+func (r *fakeRAGChunkRepository) IndexImageChunk(ctx context.Context, image *models.Image, content string, vector []float64) error {
+	return nil
+}
+
 func (r *fakeRAGChunkRepository) DeleteByDocument(ctx context.Context, userID uuid.UUID, documentID uuid.UUID) error {
 	return nil
 }

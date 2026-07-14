@@ -47,6 +47,12 @@ export type ChatMessage = {
   created_at: string
   pending?: boolean
   parts?: MessagePart[]
+  thinking?: ChatThinkingState
+}
+
+export type ChatThinkingState = {
+  active: boolean
+  iteration: number
 }
 
 export type ChatStreamRequest = {
@@ -87,6 +93,12 @@ export type ChatToolEvent = {
   tool_call_id: string
 }
 
+export type ChatThinkEvent = {
+  type: 'think'
+  status: 'thinking' | 'done'
+  iteration: number
+}
+
 export type ChatUnknownEvent = {
   type: string
   [key: string]: unknown
@@ -97,6 +109,7 @@ export type ChatStreamEvent =
   | ChatTextEvent
   | ChatErrorEvent
   | ChatToolEvent
+  | ChatThinkEvent
   | ChatUnknownEvent
 
 export type ResourceState = 'idle' | 'loading' | 'ready' | 'error'

@@ -340,6 +340,157 @@ describe('ChatScreen', () => {
     expect(mocks.listMessages).not.toHaveBeenCalled()
   })
 
+  it('keeps a streaming reply attached to the bottom until the user scrolls away', async () => {
+    const user = userEvent.setup()
+    let emit: ((event: ChatStreamEvent) => void) | undefined
+    let finish: (() => void) | undefined
+    mocks.streamChat.mockImplementation(
+      (_input: unknown, _signal: AbortSignal, onEvent: (event: ChatStreamEvent) => void) => {
+        emit = onEvent
+        return new Promise<void>((resolve) => {
+          finish = resolve
+        })
+      },
+    )
+
+    render(<ChatScreen session={session} onLogout={vi.fn()} />)
+    await screen.findByRole('heading', { name: '你好，林海' })
+    const scroll = document.querySelector('.message-scroll') as HTMLDivElement
+    Object.defineProperties(scroll, {
+      scrollHeight: { configurable: true, value: 900 },
+      clientHeight: { configurable: true, value: 300 },
+      scrollTop: { configurable: true, writable: true, value: 600 },
+    })
+    vi.mocked(Element.prototype.scrollTo).mockClear()
+
+    await user.type(screen.getByRole('textbox', { name: '发送给 Cove 的消息' }), '持续输出')
+    await user.click(screen.getByRole('button', { name: '发送消息' }))
+    act(() => emit?.({ type: 'token', text: '第一段' }))
+
+    await waitFor(() => {
+      expect(Element.prototype.scrollTo).toHaveBeenLastCalledWith({ top: 600, behavior: 'auto' })
+    })
+
+    vi.mocked(Element.prototype.scrollTo).mockClear()
+    scroll.scrollTop = 120
+    fireEvent.scroll(scroll)
+    act(() => emit?.({ type: 'token', text: '第二段' }))
+    expect(Element.prototype.scrollTo).not.toHaveBeenCalled()
+
+    scroll.scrollTop = 600
+    fireEvent.scroll(scroll)
+    act(() => emit?.({ type: 'token', text: '第三段' }))
+    await waitFor(() => {
+      expect(Element.prototype.scrollTo).toHaveBeenLastCalledWith({ top: 600, behavior: 'auto' })
+    })
+
+    act(() => {
+      emit?.({ type: 'done', text: 'message-1' })
+      finish?.()
+    })
+  })
+
+  it('renders backend think iterations at the end of the live timeline', async () => {
+    const user = userEvent.setup()
+    let emit: ((event: ChatStreamEvent) => void) | undefined
+    let finish: (() => void) | undefined
+    mocks.streamChat.mockImplementation(
+      (_input: unknown, _signal: AbortSignal, onEvent: (event: ChatStreamEvent) => void) => {
+        emit = onEvent
+        return new Promise<void>((resolve) => {
+          finish = resolve
+        })
+      },
+    )
+
+    const { container } = render(<ChatScreen session={session} onLogout={vi.fn()} />)
+    await screen.findByRole('heading', { name: '你好，林海' })
+    await user.type(screen.getByRole('textbox', { name: '发送给 Cove 的消息' }), '查询天气')
+    await user.click(screen.getByRole('button', { name: '发送消息' }))
+
+    expect(await screen.findByText('Think...')).toBeTruthy()
+    expect(container.querySelector('.stream-cursor')).toBeNull()
+
+    act(() => {
+      emit?.({ type: 'think', status: 'thinking', iteration: 1 })
+      emit?.({ type: 'think', status: 'done', iteration: 1 })
+      emit?.({ type: 'token', text: '第一段回复。' })
+    })
+    const firstPart = await screen.findByText('第一段回复。')
+    expect(screen.queryByText('Think...')).toBeNull()
+    expect(container.querySelector('.stream-cursor')).toBeTruthy()
+
+    act(() => emit?.({ type: 'think', status: 'waiting', iteration: 2 }))
+    expect(screen.queryByText('Think...')).toBeNull()
+
+    act(() => emit?.({ type: 'think', status: 'thinking', iteration: 2 }))
+    const thinking = await screen.findByText('Think...')
+    expect(firstPart.compareDocumentPosition(thinking) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(container.querySelector('.stream-cursor')).toBeNull()
+
+    act(() => emit?.({ type: 'think', status: 'done', iteration: 1 }))
+    expect(screen.getByText('Think...')).toBeTruthy()
+
+    act(() => emit?.({ type: 'think', status: 'done', iteration: 2 }))
+    await waitFor(() => expect(screen.queryByText('Think...')).toBeNull())
+    expect(container.querySelector('.stream-cursor')).toBeTruthy()
+
+    act(() => {
+      emit?.({ type: 'done', text: 'message-think' })
+      finish?.()
+    })
+    await waitFor(() => expect(container.querySelector('.stream-cursor')).toBeNull())
+  })
+
+  it('renders compact running and failed tool states while keeping details expandable', async () => {
+    const user = userEvent.setup()
+    let emit: ((event: ChatStreamEvent) => void) | undefined
+    let finish: (() => void) | undefined
+    mocks.streamChat.mockImplementation(
+      (_input: unknown, _signal: AbortSignal, onEvent: (event: ChatStreamEvent) => void) => {
+        emit = onEvent
+        return new Promise<void>((resolve) => {
+          finish = resolve
+        })
+      },
+    )
+
+    render(<ChatScreen session={session} onLogout={vi.fn()} />)
+    await screen.findByRole('heading', { name: '你好，林海' })
+    await user.type(screen.getByRole('textbox', { name: '发送给 Cove 的消息' }), '调用搜索')
+    await user.click(screen.getByRole('button', { name: '发送消息' }))
+
+    act(() => emit?.({
+      type: 'tool_call',
+      tool: '网页搜索',
+      input: { query: 'Cove' },
+      iteration: 1,
+      tool_call_id: 'call-search',
+    }))
+    const toolEvent = await screen.findByLabelText('正在使用工具 网页搜索')
+    expect(toolEvent.classList.contains('tool-event--running')).toBe(true)
+    expect(toolEvent.textContent).toBe('网页搜索')
+
+    act(() => emit?.({
+      type: 'tool_result',
+      tool: '网页搜索',
+      observation: '远端拒绝请求',
+      error: '请求失败',
+      iteration: 1,
+      tool_call_id: 'call-search',
+    }))
+    const failedToolEvent = await screen.findByLabelText('工具调用失败 网页搜索')
+    expect(toolEvent.classList.contains('tool-event--error')).toBe(true)
+    expect(failedToolEvent.textContent).toBe('网页搜索')
+    expect(screen.queryByText('远端拒绝请求')).toBeNull()
+    expect(screen.queryByText('请求失败')).toBeNull()
+
+    act(() => {
+      emit?.({ type: 'done', text: 'message-tool-error' })
+      finish?.()
+    })
+  })
+
   it('blocks duplicate sends while a stream is pending and supports retry after failure', async () => {
     const user = userEvent.setup()
     let emit: ((event: ChatStreamEvent) => void) | undefined
@@ -372,6 +523,7 @@ describe('ChatScreen', () => {
       finish?.()
     })
     const retry = await screen.findByRole('button', { name: '重新发送' })
+    expect(screen.queryByText('Think...')).toBeNull()
     await user.click(retry)
 
     await waitFor(() => expect(mocks.streamChat).toHaveBeenCalledTimes(2))
@@ -536,7 +688,7 @@ describe('ChatScreen', () => {
     expect(scroll.scrollTop).toBe(320)
   })
 
-  it('renders ordered historical message parts and expandable tool details', async () => {
+  it('renders ordered historical message parts and compact tool states', async () => {
     const onLogout = vi.fn()
     mocks.listConversations.mockResolvedValue({
       list: [conversation('conversation-1', '事件记录')],
@@ -548,6 +700,7 @@ describe('ChatScreen', () => {
       list: [
         {
           ...message('message-1', '不应重复显示'),
+          pending: true,
           meta_data: {
             image_keys: [],
             sender_name: null,
@@ -557,6 +710,7 @@ describe('ChatScreen', () => {
               { type: 'tool_call', text: null, tool: 'current_time', input: { zone: 'Asia/Shanghai' }, observation: null, error: null, iteration: 1, tool_call_id: 'call-1' },
               { type: 'tool_result', text: null, tool: 'current_time', input: null, observation: '22:30', error: null, iteration: 1, tool_call_id: 'call-1' },
               { type: 'text', text: '查询完成。', tool: null, input: null, observation: null, error: null, iteration: null, tool_call_id: null },
+              { type: 'tool_call', text: null, tool: 'maps_geo', input: { address: '上海' }, observation: null, error: null, iteration: 2, tool_call_id: 'call-2' },
             ],
           },
         },
@@ -569,12 +723,11 @@ describe('ChatScreen', () => {
     expect(await screen.findByText('先查询')).toHaveProperty('tagName', 'STRONG')
     expect(screen.getByText('查询完成。')).toBeTruthy()
     expect(screen.queryByText('不应重复显示')).toBeNull()
-    const summary = screen.getByText('已使用 current_time').closest('summary')
-    expect(summary).toBeTruthy()
-    expect((summary?.parentElement as HTMLDetailsElement).open).toBe(false)
-    fireEvent.click(summary as HTMLElement)
-    expect((summary?.parentElement as HTMLDetailsElement).open).toBe(true)
-    expect(screen.getByText('22:30')).toBeTruthy()
+    const toolEvent = screen.getByLabelText('工具已完成 current_time')
+    expect(toolEvent.textContent).toBe('current_time')
+    expect(toolEvent.classList.contains('tool-event--complete')).toBe(true)
+    expect(screen.getByLabelText('工具已完成 maps_geo').classList.contains('tool-event--complete')).toBe(true)
+    expect(screen.queryByText('22:30')).toBeNull()
     expect(screen.getByText('回复已中断')).toBeTruthy()
   })
 
@@ -675,7 +828,7 @@ describe('ChatScreen', () => {
     await user.click(screen.getByRole('button', { name: '发送消息' }))
 
     const before = await screen.findByText('查询前。')
-    const tool = screen.getByText('已使用 search')
+    const tool = screen.getByText('search')
     const after = screen.getByText('查询后。')
     expect(before.compareDocumentPosition(tool) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(tool.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()

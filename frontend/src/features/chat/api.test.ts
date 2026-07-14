@@ -109,6 +109,8 @@ describe('chat API', () => {
       '"title":"新对话"}\n\n',
       'event: token\ndata: {"type":"token",\ndata: "text":"你',
       '好"}\n\n',
+      'event: think\ndata: {"type":"think","status":"think',
+      'ing","iteration":2}\n\n',
       'event: error\ndata: {"type":"error","content":"失败"}\n\n',
     ])
 
@@ -117,6 +119,7 @@ describe('chat API', () => {
     expect(events).toEqual([
       { type: 'meta', conversation_id: 'c1', title: '新对话' },
       { type: 'token', text: '你好' },
+      { type: 'think', status: 'thinking', iteration: 2 },
       { type: 'error', content: '失败' },
     ])
   })

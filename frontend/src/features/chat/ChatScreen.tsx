@@ -42,6 +42,7 @@ import type {
   ChatAttachment,
   ChatMessage,
   ChatSubmission,
+  ChatThinkEvent,
   ChatToolEvent,
   Conversation,
   MessagePart,
@@ -144,6 +145,25 @@ function appendToolPart(parts: MessagePart[], event: ChatToolEvent) {
       tool_call_id: event.tool_call_id,
     },
   ]
+}
+
+function applyThinkEvent(message: ChatMessage, event: ChatThinkEvent): ChatMessage {
+  if (event.status === 'thinking') {
+    if (message.thinking && message.thinking.iteration > event.iteration) {
+      return message
+    }
+    return {
+      ...message,
+      thinking: { active: true, iteration: event.iteration },
+    }
+  }
+  if (message.thinking?.iteration !== event.iteration) {
+    return message
+  }
+  return {
+    ...message,
+    thinking: { active: false, iteration: event.iteration },
+  }
 }
 
 type TimelineItem =
@@ -252,46 +272,31 @@ function MarkdownContent({ text }: { text: string }) {
   )
 }
 
-function ToolEventDetails({ call, result }: { call: MessagePart | null; result: MessagePart | null }) {
+function ToolEventDetails({
+  call,
+  result,
+  running,
+}: {
+  call: MessagePart | null
+  result: MessagePart | null
+  running: boolean
+}) {
   const tool = call?.tool || result?.tool || '未知工具'
-  const status = result ? (result.error ? 'error' : 'complete') : 'running'
-  const label = status === 'running' ? '正在使用' : status === 'error' ? '工具失败' : '已使用'
-  const input = call?.input ?? result?.input
+  const status = result ? (result.error ? 'error' : 'complete') : running ? 'running' : 'complete'
+  const statusLabel = status === 'running' ? '正在使用工具' : status === 'error' ? '工具调用失败' : '工具已完成'
 
   return (
-    <details className={`tool-event tool-event--${status}`}>
-      <summary>
-        <span className="tool-event__status" aria-hidden="true" />
-        <span>{label} {tool}</span>
-      </summary>
-      <div className="tool-event__details">
-        {input && Object.keys(input).length > 0 && (
-          <div>
-            <strong>输入</strong>
-            <pre>{JSON.stringify(input, null, 2)}</pre>
-          </div>
-        )}
-        {result?.observation && (
-          <div>
-            <strong>结果</strong>
-            <pre>{result.observation}</pre>
-          </div>
-        )}
-        {result?.error && (
-          <div className="tool-event__error">
-            <strong>错误</strong>
-            <pre>{result.error}</pre>
-          </div>
-        )}
-        {!input && !result?.observation && !result?.error && <p>暂无详细信息。</p>}
-      </div>
-    </details>
+    <div className={`tool-event tool-event--${status}`} role="status" aria-label={`${statusLabel} ${tool}`}>
+      <span className="tool-event__status" aria-hidden="true" />
+      <span className="tool-event__name">{tool}</span>
+    </div>
   )
 }
 
-function AssistantMessageContent({ message }: { message: ChatMessage }) {
+function AssistantMessageContent({ message, streaming }: { message: ChatMessage; streaming: boolean }) {
   const timeline = messageTimeline(message)
   const hasText = timeline.some((item) => item.kind === 'text')
+  const isThinking = Boolean(message.thinking?.active) || (message.pending === true && timeline.length === 0)
 
   return (
     <>
@@ -301,16 +306,24 @@ function AssistantMessageContent({ message }: { message: ChatMessage }) {
             <MarkdownContent text={item.part.text ?? ''} />
           </div>
         ) : (
-          <ToolEventDetails call={item.call} result={item.result} key={item.key} />
+          <ToolEventDetails
+            call={item.call}
+            result={item.result}
+            running={message.pending === true && streaming && message.id.startsWith('local-assistant-')}
+            key={item.key}
+          />
         ),
       )}
-      {message.pending && timeline.length === 0 && (
-        <span className="thinking-indicator" aria-label="Cove 正在思考"><i /><i /><i /></span>
+      {isThinking && (
+        <span className="thinking-indicator" aria-label="Cove 正在思考">
+          <span className="thinking-indicator__dots" aria-hidden="true"><i /><i /><i /></span>
+          <span>Think...</span>
+        </span>
       )}
       {message.meta_data?.interrupted && (
         <p className="message-interrupted" role="status">回复已中断</p>
       )}
-      {message.pending && hasText && <span className="stream-cursor" aria-hidden="true" />}
+      {message.pending && hasText && !isThinking && <span className="stream-cursor" aria-hidden="true" />}
     </>
   )
 }
@@ -580,9 +593,9 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
       return
     }
     if (autoFollowRef.current) {
-      scrollToBottom(messageScroll, 'smooth')
+      scrollToBottom(messageScroll, streamState.status === 'streaming' ? 'auto' : 'smooth')
     }
-  }, [messages])
+  }, [messages, streamState.status])
 
   useEffect(() => {
     return () => {
@@ -987,7 +1000,10 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
 
     const conversationIdAtSend = selectedId
     const userMessage = localMessage('user', text)
-    const assistantMessage = localMessage('assistant', '')
+    const assistantMessage: ChatMessage = {
+      ...localMessage('assistant', ''),
+      thinking: { active: true, iteration: 0 },
+    }
     const controller = new AbortController()
     abortRef.current = controller
     setDraft('')
@@ -1031,13 +1047,34 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
               ...message,
               content: message.content + token.text,
               parts: appendTokenPart(message.parts ?? [], token.text),
+              thinking: message.thinking
+                ? { ...message.thinking, active: false }
+                : undefined,
             }))
+            return
+          }
+          if (event.type === 'think') {
+            const think = event as ChatThinkEvent
+            if (
+              (think.status !== 'thinking' && think.status !== 'done')
+              || !Number.isInteger(think.iteration)
+              || think.iteration < 0
+            ) {
+              if (import.meta.env.DEV) {
+                console.debug('Ignored invalid chat think event', event)
+              }
+              return
+            }
+            updateAssistant(assistantMessage.id, (message) => applyThinkEvent(message, think))
             return
           }
           if (event.type === 'tool_call' || event.type === 'tool_result') {
             updateAssistant(assistantMessage.id, (message) => ({
               ...message,
               parts: appendToolPart(message.parts ?? [], event as ChatToolEvent),
+              thinking: message.thinking
+                ? { ...message.thinking, active: false }
+                : undefined,
             }))
             return
           }
@@ -1048,6 +1085,7 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
               ...message,
               id: done.text || message.id,
               pending: false,
+              thinking: undefined,
             }))
             setMessages((current) =>
               current.map((message) =>
@@ -1060,7 +1098,11 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
           if (event.type === 'error') {
             reachedTerminalEvent = true
             const streamError = event as { type: 'error'; content: string }
-            updateAssistant(assistantMessage.id, (message) => ({ ...message, pending: false }))
+            updateAssistant(assistantMessage.id, (message) => ({
+              ...message,
+              pending: false,
+              thinking: undefined,
+            }))
             setStreamState({ status: 'error', message: streamError.content, submission: request })
             return
           }
@@ -1070,7 +1112,11 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
         },
       )
       if (!reachedTerminalEvent && !controller.signal.aborted) {
-        updateAssistant(assistantMessage.id, (item) => ({ ...item, pending: false }))
+        updateAssistant(assistantMessage.id, (item) => ({
+          ...item,
+          pending: false,
+          thinking: undefined,
+        }))
         setStreamState({
           status: 'error',
           message: '消息流提前结束，请重新发送。',
@@ -1080,7 +1126,11 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
     } catch (error: unknown) {
       if (!controller.signal.aborted) {
         const message = error instanceof Error ? error.message : '回复中断，请稍后重试。'
-        updateAssistant(assistantMessage.id, (item) => ({ ...item, pending: false }))
+        updateAssistant(assistantMessage.id, (item) => ({
+          ...item,
+          pending: false,
+          thinking: undefined,
+        }))
         setStreamState({ status: 'error', message, submission: request })
       }
     } finally {
@@ -1402,7 +1452,7 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
                 )}
                 <div className="message__body">
                   {message.role === 'assistant' ? (
-                    <AssistantMessageContent message={message} />
+                    <AssistantMessageContent message={message} streaming={streamState.status === 'streaming'} />
                   ) : (
                     <p>{message.content}</p>
                   )}

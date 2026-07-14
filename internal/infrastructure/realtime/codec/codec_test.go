@@ -1,6 +1,7 @@
 package codec
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/boxify/api-go/internal/domain/types"
@@ -17,6 +18,8 @@ func TestEventCodecRoundTripsKnownEvents(t *testing.T) {
 		types.NewErrorEvent("boom"),
 		types.NewToolCallEvent("current_time", map[string]any{"zone": "UTC"}, 1, "call_1"),
 		types.NewToolResultEvent("current_time", map[string]any{"zone": "UTC"}, "12:00", "", 1, "call_1"),
+		types.NewThinkEvent(types.ThinkStatusThinking, 1),
+		types.NewThinkEvent(types.ThinkStatusDone, 2),
 		types.NewPingEvent(),
 	}
 
@@ -53,6 +56,30 @@ func TestEventCodecRoundTripsToolEventFields(t *testing.T) {
 	}
 	if got.Tool != "current_time" || got.Input["zone"] != "UTC" || got.Observation != "12:00" || got.Iteration != 2 || got.ToolCallID != "call_2" {
 		t.Fatalf("decoded tool event = %#v, want preserved fields", got)
+	}
+}
+
+// 验证 think 事件编解码保留 status 与 iteration。
+func TestEventCodecRoundTripsThinkEventFields(t *testing.T) {
+	event := types.NewThinkEvent(types.ThinkStatusThinking, 3)
+	payload, err := MarshalEvent(event)
+	if err != nil {
+		t.Fatalf("MarshalEvent(think) error = %v", err)
+	}
+	raw := string(payload)
+	if !strings.Contains(raw, `"status":"thinking"`) || !strings.Contains(raw, `"iteration":3`) {
+		t.Fatalf("payload = %s, want status and iteration fields", raw)
+	}
+	gotEvent, err := UnmarshalEvent(payload)
+	if err != nil {
+		t.Fatalf("UnmarshalEvent(think) error = %v", err)
+	}
+	got, ok := gotEvent.(*types.ThinkEvent)
+	if !ok {
+		t.Fatalf("decoded event type = %T, want *types.ThinkEvent", gotEvent)
+	}
+	if got.Status != types.ThinkStatusThinking || got.Iteration != 3 {
+		t.Fatalf("decoded think event = %#v, want status=thinking iteration=3", got)
 	}
 }
 

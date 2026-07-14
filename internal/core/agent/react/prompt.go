@@ -50,10 +50,24 @@ func (b *ReActPromptBuilder) renderSystemPrompt(state State) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return coreprompt.RenderText(text, agentprompt.ReActSystemData{
-		Tools:        tools,
-		SystemPrompt: strings.TrimSpace(state.SystemPrompt),
-	})
+	// 模板仅渲染 ReAct 协议（工具列表 + 格式规则）；业务人设放在前面保证角色优先。
+	protocol, err := coreprompt.RenderText(text, agentprompt.ReActSystemData{Tools: tools})
+	if err != nil {
+		return "", err
+	}
+	return joinSystemPrompt(strings.TrimSpace(state.SystemPrompt), strings.TrimSpace(protocol)), nil
+}
+
+// joinSystemPrompt 人设在前、协议在后，非空段以空行分隔。
+func joinSystemPrompt(parts ...string) string {
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return strings.Join(out, "\n\n")
 }
 
 func formatScratchpad(steps []Step) string {

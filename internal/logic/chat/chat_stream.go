@@ -145,7 +145,18 @@ func (l *ChatStreamLogic) runChatTurnBG(
 		_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewErrorEvent("生成失败："+err.Error()))
 		return
 	}
-	runtimeConfig := resolveChatRuntimeConfig(input, agentConfig)
+	persona, err := l.chatActivePersona(ctx, userID)
+	if err != nil {
+		l.log.WarnContext(ctx, "获取生效角色失败", slog.String("error", err.Error()))
+		_ = l.svcCtx.Realtime.Publish(ctx, topic, types.NewErrorEvent("生成失败："+err.Error()))
+		return
+	}
+	runtimeConfig := resolveChatRuntimeConfig(input, agentConfig, persona)
+	l.log.InfoContext(ctx, "聊天最终系统提示词",
+		slog.String("user_id", userID.String()),
+		slog.String("conversation_id", conversationID.String()),
+		slog.String("system_prompt", runtimeConfig.SystemPrompt),
+	)
 
 	messageCh, err := flowchat.NewOrchestrator(l.svcCtx).Run(ctx, flowchat.Input{
 		UserID:               userID,
@@ -280,8 +291,17 @@ func (l *ChatStreamLogic) chatAgentConfig(ctx context.Context, userID uuid.UUID)
 	return config, nil
 }
 
+// chatActivePersona 获取用户当前生效的 AgentPersona；无生效角色时返回 nil。
+func (l *ChatStreamLogic) chatActivePersona(ctx context.Context, userID uuid.UUID) (*models.AgentPersona, error) {
+	if l.svcCtx == nil || l.svcCtx.AgentPersonaRepo == nil {
+		return nil, nil
+	}
+	return l.svcCtx.AgentPersonaRepo.FindActive(ctx, userID)
+}
+
 // resolveChatRuntimeConfig 归一化聊天运行参数，并在 logic 层提供业务默认值兜底。
-func resolveChatRuntimeConfig(input *request.ChatStreamRequest, agentConfig *models.AgentConfig) chatRuntimeConfig {
+// 有人格 soul/identity 时注入 # Soul / # Identity；否则注入默认 Cove 身份。
+func resolveChatRuntimeConfig(input *request.ChatStreamRequest, agentConfig *models.AgentConfig, persona *models.AgentPersona) chatRuntimeConfig {
 	config := chatRuntimeConfig{
 		EnableKnowledge: false,
 		Temperature:     defaultChatTemperature,
@@ -289,10 +309,17 @@ func resolveChatRuntimeConfig(input *request.ChatStreamRequest, agentConfig *mod
 	if agentConfig != nil && agentConfig.Temperature > 0 {
 		config.Temperature = agentConfig.Temperature
 	}
+	agentPrompt := ""
 	if agentConfig != nil {
 		config.EnableKnowledge = agentConfig.EnableKnowledge
-		config.SystemPrompt = strings.TrimSpace(agentConfig.SystemPrompt)
+		agentPrompt = strings.TrimSpace(agentConfig.SystemPrompt)
 	}
+	soul, identity := "", ""
+	if persona != nil {
+		soul = persona.Soul
+		identity = persona.Identity
+	}
+	config.SystemPrompt = buildChatSystemPrompt(soul, identity, agentPrompt)
 	if input != nil && input.EnableKnowledge != nil {
 		config.EnableKnowledge = *input.EnableKnowledge
 	}

@@ -181,30 +181,53 @@ func TestResolveChatRuntimeConfigUsesRequestKnowledgeOverride(t *testing.T) {
 	disabled := false
 	agentConfig := &models.AgentConfig{EnableKnowledge: true, Temperature: 0.3}
 
-	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{EnableKnowledge: &disabled}, agentConfig); got.EnableKnowledge {
+	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{EnableKnowledge: &disabled}, agentConfig, nil); got.EnableKnowledge {
 		t.Fatalf("resolveChatRuntimeConfig(explicit false).EnableKnowledge = %v, want false", got.EnableKnowledge)
 	}
-	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{EnableKnowledge: &enabled}, &models.AgentConfig{EnableKnowledge: false}); !got.EnableKnowledge {
+	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{EnableKnowledge: &enabled}, &models.AgentConfig{EnableKnowledge: false}, nil); !got.EnableKnowledge {
 		t.Fatalf("resolveChatRuntimeConfig(explicit true).EnableKnowledge = %v, want true", got.EnableKnowledge)
 	}
-	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{}, agentConfig); !got.EnableKnowledge {
+	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{}, agentConfig, nil); !got.EnableKnowledge {
 		t.Fatalf("resolveChatRuntimeConfig(agent default).EnableKnowledge = %v, want true", got.EnableKnowledge)
 	}
-	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{}, nil); got.EnableKnowledge {
+	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{}, nil, nil); got.EnableKnowledge {
 		t.Fatalf("resolveChatRuntimeConfig(no defaults).EnableKnowledge = %v, want false", got.EnableKnowledge)
 	}
 }
 
-// 验证 resolveChatRuntimeConfig 会在 logic 层合并温度默认值和系统提示词。
+// 验证 resolveChatRuntimeConfig 合并温度，无人格时注入 Cove intro + AgentConfig 提示。
 func TestResolveChatRuntimeConfigDefaultsTemperatureAndPrompt(t *testing.T) {
-	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{}, &models.AgentConfig{Temperature: 0.4, SystemPrompt: " prompt "}); got.Temperature != 0.4 || got.SystemPrompt != "prompt" {
-		t.Fatalf("resolveChatRuntimeConfig(agent config) = %+v, want temperature 0.4 and trimmed prompt", got)
+	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{}, &models.AgentConfig{Temperature: 0.4, SystemPrompt: " prompt "}, nil); got.Temperature != 0.4 || !strings.Contains(got.SystemPrompt, coveAssistantIntro) || !strings.Contains(got.SystemPrompt, "prompt") {
+		t.Fatalf("resolveChatRuntimeConfig(agent config) = %+v, want temperature 0.4 and Cove+prompt", got)
 	}
-	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{}, &models.AgentConfig{}); got.Temperature != defaultChatTemperature {
+	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{}, &models.AgentConfig{}, nil); got.Temperature != defaultChatTemperature {
 		t.Fatalf("resolveChatRuntimeConfig(default temperature).Temperature = %v, want %v", got.Temperature, defaultChatTemperature)
 	}
-	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{}, nil); got.Temperature != defaultChatTemperature {
-		t.Fatalf("resolveChatRuntimeConfig(nil config).Temperature = %v, want %v", got.Temperature, defaultChatTemperature)
+	if got := resolveChatRuntimeConfig(&request.ChatStreamRequest{}, nil, nil); got.Temperature != defaultChatTemperature || got.SystemPrompt != coveAssistantIntro {
+		t.Fatalf("resolveChatRuntimeConfig(nil config) = %+v, want default temperature and Cove intro", got)
+	}
+}
+
+// 验证有生效人格时 SystemPrompt 含 Soul/Identity（先 Soul），且不注入 Cove intro。
+func TestResolveChatRuntimeConfigUsesActivePersona(t *testing.T) {
+	persona := &models.AgentPersona{
+		Soul:     "# Soul\n温暖",
+		Identity: "你是小盒",
+	}
+	got := resolveChatRuntimeConfig(nil, &models.AgentConfig{SystemPrompt: "extra"}, persona)
+	if strings.Contains(got.SystemPrompt, "Cove") {
+		t.Fatalf("SystemPrompt = %q, must not inject Cove intro when persona present", got.SystemPrompt)
+	}
+	if !strings.Contains(got.SystemPrompt, "# Soul\n温暖") || !strings.Contains(got.SystemPrompt, "# Identity\n你是小盒") {
+		t.Fatalf("SystemPrompt = %q, want soul then identity sections", got.SystemPrompt)
+	}
+	if !strings.Contains(got.SystemPrompt, "extra") {
+		t.Fatalf("SystemPrompt = %q, want agent config prompt retained", got.SystemPrompt)
+	}
+	soulIdx := strings.Index(got.SystemPrompt, "# Soul")
+	idIdx := strings.Index(got.SystemPrompt, "# Identity")
+	if soulIdx < 0 || idIdx < soulIdx {
+		t.Fatalf("SystemPrompt order wrong: %q", got.SystemPrompt)
 	}
 }
 
@@ -229,6 +252,7 @@ func newChatStreamTestServiceContext(t *testing.T, userID uuid.UUID, llmClient *
 		LLMManager:        llmManager,
 		ModelConfigRepo:   &fakeChatModelConfigRepo{rows: []*models.ModelConfig{{ID: uuid.New(), UserID: userID, Type: string(types.ChatModelType), Provider: "fake", ModelName: "fake-chat", APIKeyEncrypted: encrypted, IsDefault: true}}},
 		AgentConfigRepo:   &fakeChatAgentConfigRepo{row: &models.AgentConfig{UserID: userID, Temperature: 0.2, EnableKnowledge: true}},
+		AgentPersonaRepo:  &fakeChatAgentPersonaRepo{},
 		ConversationRepo:  &fakeChatConversationRepo{},
 		MessageRepo:       &fakeChatMessageRepo{},
 		KnowledgeBaseRepo: &fakeChatKnowledgeBaseRepo{},
@@ -237,6 +261,38 @@ func newChatStreamTestServiceContext(t *testing.T, userID uuid.UUID, llmClient *
 		PromptManager:     promptManager,
 		PromptClient:      promptsgen.NewClient(promptManager),
 	}
+}
+
+type fakeChatAgentPersonaRepo struct {
+	active *models.AgentPersona
+}
+
+func (r *fakeChatAgentPersonaRepo) Create(_ context.Context, _ uuid.UUID, row *models.AgentPersona) (*models.AgentPersona, error) {
+	return row, nil
+}
+func (r *fakeChatAgentPersonaRepo) List(_ context.Context, _ uuid.UUID) ([]*models.AgentPersona, error) {
+	return nil, nil
+}
+func (r *fakeChatAgentPersonaRepo) FindByID(_ context.Context, _ uuid.UUID, _ uuid.UUID) (*models.AgentPersona, error) {
+	return nil, xerr.NotFound("智能体人格不存在")
+}
+func (r *fakeChatAgentPersonaRepo) FindActive(_ context.Context, _ uuid.UUID) (*models.AgentPersona, error) {
+	return r.active, nil
+}
+func (r *fakeChatAgentPersonaRepo) Update(_ context.Context, _ uuid.UUID, row *models.AgentPersona) (*models.AgentPersona, error) {
+	return row, nil
+}
+func (r *fakeChatAgentPersonaRepo) UpdateFields(_ context.Context, _ uuid.UUID, _ uuid.UUID, row *models.AgentPersona, _ *repository.AgentPersonaUpdateFields) (*models.AgentPersona, error) {
+	return row, nil
+}
+func (r *fakeChatAgentPersonaRepo) Delete(_ context.Context, _ uuid.UUID, _ uuid.UUID) error {
+	return nil
+}
+func (r *fakeChatAgentPersonaRepo) Count(_ context.Context, _ uuid.UUID) (int64, error) {
+	return 0, nil
+}
+func (r *fakeChatAgentPersonaRepo) ActivateByID(_ context.Context, _ uuid.UUID, _ uuid.UUID) error {
+	return nil
 }
 
 type fakeChatToolConfigRepo struct{}

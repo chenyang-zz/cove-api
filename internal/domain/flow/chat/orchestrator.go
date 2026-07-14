@@ -40,8 +40,6 @@ type Input struct {
 }
 
 const (
-	coveAssistantIntro = "你是「Cove」的智能助手。你可以调用以下工具来帮助回答用户的问题。"
-
 	// defaultMCPAssembleBudget 是单轮对话中 MCP 工具发现的墙钟上限。
 	defaultMCPAssembleBudget = 8 * time.Second
 	// defaultMCPAssembleConcurrency 限制同时 OpenTools 的 MCP server 数，对齐 toolconfig。
@@ -130,9 +128,10 @@ func (o *Orchestrator) generate(ctx context.Context, input Input, events chan<- 
 	}()
 
 	hooks := &agentHooks{events: events, registry: registry}
+	// SystemPrompt 由 logic 层完整组装（人格 / Cove intro / AgentConfig），此处只透传。
 	options := []corereact.Option{
 		corereact.WithHooks(hooks),
-		corereact.WithSystemPrompt(composeSystemPrompt(coveAssistantIntro, input.SystemPrompt)),
+		corereact.WithSystemPrompt(strings.TrimSpace(input.SystemPrompt)),
 		corereact.WithModelOptions(llm.WithTemperature(input.Temperature)),
 	}
 	result, err := corereact.New(client, registry, options...).Run(runCtx, corereact.Input{
@@ -402,17 +401,6 @@ func toolContext(ctx context.Context, svcCtx *svc.ServiceContext, userID uuid.UU
 	return util.WithKnowledgeBaseIDs(ctx, kbIDs), kbIDs, nil
 }
 
-func composeSystemPrompt(parts ...string) string {
-	out := []string{}
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-	return strings.Join(out, "\n\n")
-}
-
 func composeQuery(message string, attachments []*types.MessageAttachment) string {
 	query := strings.TrimSpace(message)
 	if len(attachments) == 0 {
@@ -437,31 +425,47 @@ type agentHooks struct {
 	events   chan<- flow.Message
 	registry *coretool.Registry
 	streamed strings.Builder
+	// thinking 为 true 表示本轮模型调用尚未结束思考态；首 token / AfterModel 兜底时结束。
+	thinking bool
 }
 
 // BeforeModel 在发起大模型请求前发出 thinking 状态。
 func (h *agentHooks) BeforeModel(ctx context.Context, state corereact.State, messages []*llm.Message) error {
+	h.thinking = true
 	return h.emit(ctx, &flow.ThinkMessage{
 		Status:    flow.ThinkStatusThinking,
 		Iteration: state.Iteration,
 	})
 }
 
-// AfterModel 在大模型请求结束后发出 done 状态（无论成功失败）。
+// AfterModel 在整段流结束后触发；仅作兜底结束 thinking（本轮无任何 OnToken 时）。
+// 有可见 token 时 think 已在首 token 前结束，此处为幂等 no-op。
 func (h *agentHooks) AfterModel(ctx context.Context, state corereact.State, output string, modelErr error) error {
-	return h.emit(ctx, &flow.ThinkMessage{
-		Status:    flow.ThinkStatusDone,
-		Iteration: state.Iteration,
-	})
+	return h.endThink(ctx, state.Iteration)
 }
 
-// OnToken 将 Agent 已确认可展示的模型文本增量交给 flow。
+// OnToken 在首个可展示 token 前结束 thinking，再转发增量。
 func (h *agentHooks) OnToken(ctx context.Context, state corereact.State, text string) error {
 	if text == "" {
 		return nil
 	}
+	if err := h.endThink(ctx, state.Iteration); err != nil {
+		return err
+	}
 	h.streamed.WriteString(text)
 	return h.emit(ctx, &flow.PartialMessage{Text: text})
+}
+
+// endThink 结束本轮 thinking（幂等）。
+func (h *agentHooks) endThink(ctx context.Context, iteration int) error {
+	if h == nil || !h.thinking {
+		return nil
+	}
+	h.thinking = false
+	return h.emit(ctx, &flow.ThinkMessage{
+		Status:    flow.ThinkStatusDone,
+		Iteration: iteration,
+	})
 }
 
 func (h *agentHooks) partial() string {

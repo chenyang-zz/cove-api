@@ -55,9 +55,13 @@ func (l *UpdateAgentPersonaLogic) UpdateAgentPersona(userID uuid.UUID, input *re
 		patch.Temperature = *input.Temperature
 		fields.Temperature()
 	}
-	if input.SystemPrompt != nil {
-		patch.SystemPrompt = *input.SystemPrompt
-		fields.SystemPrompt()
+	if input.Identity != nil {
+		patch.Identity = *input.Identity
+		fields.Identity()
+	}
+	if input.Soul != nil {
+		patch.Soul = *input.Soul
+		fields.Soul()
 	}
 
 	persona, err = l.svcCtx.AgentPersonaRepo.UpdateFields(l.ctx, userID, persona.ID, patch, fields)

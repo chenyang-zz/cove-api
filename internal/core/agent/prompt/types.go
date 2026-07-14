@@ -23,7 +23,7 @@ type ReActToolData struct {
 }
 
 // ReActSystemData 约束 ReAct 系统模板可使用的变量。
+// 业务人设 SystemPrompt 不在模板内渲染，由调用方拼在协议段之前。
 type ReActSystemData struct {
-	Tools        []ReActToolData
-	SystemPrompt string
+	Tools []ReActToolData
 }

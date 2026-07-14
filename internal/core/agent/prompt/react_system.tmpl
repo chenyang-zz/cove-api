@@ -1,7 +1,3 @@
-{{- if .SystemPrompt }}
-{{ .SystemPrompt }}
-
-{{- end }}
 可用工具：
 {{ range .Tools }}
 - {{ .Name }}：{{ .Description }}

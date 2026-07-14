@@ -34,6 +34,11 @@ type toolEventData struct {
 	ToolCallID  string         `json:"tool_call_id,omitempty"`
 }
 
+type thinkEventData struct {
+	Status    string `json:"status"`
+	Iteration int    `json:"iteration,omitempty"`
+}
+
 func MarshalEvent(event types.Event) ([]byte, error) {
 	var data any = map[string]any{}
 	switch e := event.(type) {
@@ -51,6 +56,11 @@ func MarshalEvent(event types.Event) ([]byte, error) {
 			Error:       e.Error,
 			Iteration:   e.Iteration,
 			ToolCallID:  e.ToolCallID,
+		}
+	case *types.ThinkEvent:
+		data = thinkEventData{
+			Status:    e.Status,
+			Iteration: e.Iteration,
 		}
 	}
 
@@ -106,6 +116,12 @@ func UnmarshalEvent(payload []byte) (types.Event, error) {
 			return nil, err
 		}
 		return types.NewToolResultEvent(data.Tool, data.Input, data.Observation, data.Error, data.Iteration, data.ToolCallID), nil
+	case types.EventTypeThink:
+		var data thinkEventData
+		if err := json.Unmarshal(envelope.Data, &data); err != nil {
+			return nil, err
+		}
+		return types.NewThinkEvent(data.Status, data.Iteration), nil
 	case types.EventTypePing:
 		return types.NewPingEvent(), nil
 	default:

@@ -42,11 +42,12 @@ func (l *CreateAgentPersonaLogic) CreateAgentPersona(userID uuid.UUID, input *re
 	}
 
 	persona := &models.AgentPersona{
-		UserID:       userID,
-		Name:         strings.TrimSpace(input.Name),
-		AvatarKey:    input.AvatarKey,
-		SystemPrompt: input.SystemPrompt,
-		Temperature:  0.7,
+		UserID:      userID,
+		Name:        strings.TrimSpace(input.Name),
+		AvatarKey:   input.AvatarKey,
+		Identity:    strings.TrimSpace(input.Identity),
+		Soul:        strings.TrimSpace(input.Soul),
+		Temperature: 0.7,
 	}
 	if input.Temperature != nil {
 		persona.Temperature = *input.Temperature

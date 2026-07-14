@@ -48,15 +48,19 @@ func TestOrchestratorRunEmitsAssistantAndDone(t *testing.T) {
 		t.Fatalf("Orchestrator.Run error = %v, want nil", err)
 	}
 	gotKinds := flowMessageKinds(messages)
-	// think(thinking) → partial token(s) → think(done) → assistant → done
+	// think(thinking) → think(done) → partial → assistant → done（done 在首 token 前）
 	if !hasFlowMessageKindsInOrder(gotKinds, []flow.MessageKind{
-		flow.MessageThink, flow.MessagePartial, flow.MessageThink, flow.MessageAssistant, flow.MessageDone,
+		flow.MessageThink, flow.MessageThink, flow.MessagePartial, flow.MessageAssistant, flow.MessageDone,
 	}) {
-		t.Fatalf("message kinds = %#v, want think/partial/think/assistant/done", gotKinds)
+		t.Fatalf("message kinds = %#v, want think/think/partial/assistant/done", gotKinds)
 	}
 	thinkStart, ok := messages[0].(*flow.ThinkMessage)
 	if !ok || thinkStart.Status != flow.ThinkStatusThinking {
 		t.Fatalf("first message = %#v, want think thinking", messages[0])
+	}
+	thinkEnd, ok := messages[1].(*flow.ThinkMessage)
+	if !ok || thinkEnd.Status != flow.ThinkStatusDone {
+		t.Fatalf("second message = %#v, want think done before first token", messages[1])
 	}
 	partial, ok := firstFlowMessageOfType[*flow.PartialMessage](messages)
 	if !ok || strings.TrimSpace(partial.Text) != "业务回复" {
@@ -112,11 +116,11 @@ func TestOrchestratorRunPassesHistoryAndAttachments(t *testing.T) {
 	}
 }
 
-// 验证点：聊天 Flow 应通过 SystemPrompt 向 ReAct core 注入 Cove 应用身份。
-func TestOrchestratorRunInjectsCoveIdentityThroughSystemPrompt(t *testing.T) {
+// 验证点：Orchestrator 透传 logic 传入的 SystemPrompt，不再硬编码 Cove intro。
+func TestOrchestratorRunPassesThroughSystemPrompt(t *testing.T) {
 	userID := uuid.New()
 	llmClient := &fakeFlowChatLLMClient{invokeResponses: []fakeFlowInvokeResponse{{
-		text: "Thought: done\nFinal Answer: Cove 回复",
+		text: "Thought: done\nFinal Answer: 回复",
 	}}}
 	svcCtx := newFlowChatTestServiceContext(t, userID, llmClient)
 	orchestrator := NewOrchestrator(svcCtx)
@@ -127,42 +131,17 @@ func TestOrchestratorRunInjectsCoveIdentityThroughSystemPrompt(t *testing.T) {
 		CurrentUserMessageID: uuid.New(),
 		Message:              "你好",
 		Temperature:          0.2,
+		SystemPrompt:         "# Soul\n温暖\n\n# Identity\n你是小盒",
 	}))
 	if err != nil {
-		t.Fatalf("Orchestrator.Run(cove intro) error = %v, want nil", err)
+		t.Fatalf("Orchestrator.Run(system prompt) error = %v, want nil", err)
 	}
 	contents := llmClient.messageContents()
-	if !containsFlowText(contents, "你是「Cove」的智能助手") {
-		t.Fatalf("model messages = %#v, want Cove assistant intro", contents)
+	if !containsFlowText(contents, "# Soul") || !containsFlowText(contents, "你是小盒") {
+		t.Fatalf("model messages = %#v, want passed-through persona system prompt", contents)
 	}
-	if containsFlowText(contents, "彗记") {
-		t.Fatalf("model messages = %#v, should not contain old app name", contents)
-	}
-}
-
-// 验证点：聊天 Flow 应把 Cove 身份和用户配置的人设统一通过 SystemPrompt 传给 ReAct。
-func TestOrchestratorRunCombinesCoveIntroAndUserSystemPrompt(t *testing.T) {
-	userID := uuid.New()
-	llmClient := &fakeFlowChatLLMClient{invokeResponses: []fakeFlowInvokeResponse{{
-		text: "Thought: done\nFinal Answer: Cove 回复",
-	}}}
-	svcCtx := newFlowChatTestServiceContext(t, userID, llmClient)
-	orchestrator := NewOrchestrator(svcCtx)
-
-	_, err := collectFlowMessages(orchestrator.Run(context.Background(), Input{
-		UserID:               userID,
-		ConversationID:       uuid.New(),
-		CurrentUserMessageID: uuid.New(),
-		Message:              "你好",
-		Temperature:          0.2,
-		SystemPrompt:         "回答要简洁。",
-	}))
-	if err != nil {
-		t.Fatalf("Orchestrator.Run(combined system prompt) error = %v, want nil", err)
-	}
-	contents := llmClient.messageContents()
-	if !containsFlowText(contents, "你是「Cove」的智能助手") || !containsFlowText(contents, "回答要简洁。") {
-		t.Fatalf("model messages = %#v, want Cove intro and user system prompt", contents)
+	if containsFlowText(contents, "你是「Cove」的智能助手") {
+		t.Fatalf("model messages = %#v, orchestrator must not inject Cove intro itself", contents)
 	}
 }
 
@@ -537,21 +516,21 @@ func TestOrchestratorRunEmitsErrorWithPartial(t *testing.T) {
 		t.Fatalf("Orchestrator.Run error = %v, want nil", err)
 	}
 	if gotKinds := flowMessageKinds(messages); !slices.Equal(gotKinds, []flow.MessageKind{
-		flow.MessageThink, flow.MessagePartial, flow.MessageThink, flow.MessageError,
+		flow.MessageThink, flow.MessageThink, flow.MessagePartial, flow.MessageError,
 	}) {
-		t.Fatalf("message kinds = %#v, want think/partial/think/error", gotKinds)
+		t.Fatalf("message kinds = %#v, want think/think/partial/error", gotKinds)
 	}
 	thinkStart, ok := messages[0].(*flow.ThinkMessage)
 	if !ok || thinkStart.Status != flow.ThinkStatusThinking {
 		t.Fatalf("first message = %#v, want think thinking", messages[0])
 	}
-	partial, ok := messages[1].(*flow.PartialMessage)
-	if !ok || strings.TrimSpace(partial.Text) != "部分回复" {
-		t.Fatalf("second message = %#v, want partial token", messages[1])
-	}
-	thinkEnd, ok := messages[2].(*flow.ThinkMessage)
+	thinkEnd, ok := messages[1].(*flow.ThinkMessage)
 	if !ok || thinkEnd.Status != flow.ThinkStatusDone {
-		t.Fatalf("third message = %#v, want think done", messages[2])
+		t.Fatalf("second message = %#v, want think done before first token", messages[1])
+	}
+	partial, ok := messages[2].(*flow.PartialMessage)
+	if !ok || strings.TrimSpace(partial.Text) != "部分回复" {
+		t.Fatalf("third message = %#v, want partial token", messages[2])
 	}
 	errMsg, ok := messages[3].(*flow.ErrorMessage)
 	if !ok {
@@ -583,11 +562,12 @@ func TestOrchestratorRunEmitsToolCallAndResultMessages(t *testing.T) {
 		t.Fatalf("Orchestrator.Run(tool success) error = %v, want nil", err)
 	}
 	gotKinds := flowMessageKinds(messages)
+	// 每轮：thinking → done（首 token 前或无 token 时 AfterModel）
 	if !hasFlowMessageKindsInOrder(gotKinds, []flow.MessageKind{
 		flow.MessageThink, flow.MessageThink, flow.MessageToolCall, flow.MessageToolResult,
-		flow.MessageThink, flow.MessagePartial, flow.MessageAssistant, flow.MessageDone,
+		flow.MessageThink, flow.MessageThink, flow.MessagePartial, flow.MessageAssistant, flow.MessageDone,
 	}) {
-		t.Fatalf("message kinds = %#v, want think×2 → tool → think → partial → assistant/done", gotKinds)
+		t.Fatalf("message kinds = %#v, want think pairs before tool and before final tokens", gotKinds)
 	}
 	call, ok := firstFlowMessageOfType[*flow.ToolCallMessage](messages)
 	if !ok || call.Tool != "获取当前时间" || call.Iteration != 1 {

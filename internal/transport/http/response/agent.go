@@ -26,13 +26,14 @@ type AgentConfigResponse struct {
 }
 
 type AgentPersonaResponse struct {
-	ID           uuid.UUID `json:"id"`
-	Name         string    `json:"name"`
-	AvatarKey    string    `json:"avatar_key"`
-	AvatarUrl    string    `json:"avatar_url"`
-	SystemPrompt string    `json:"system_prompt"`
-	Temperature  float64   `json:"temperature"`
-	IsActive     bool      `json:"is_active"`
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	AvatarKey   string    `json:"avatar_key"`
+	AvatarUrl   string    `json:"avatar_url"`
+	Identity    string    `json:"identity"`
+	Soul        string    `json:"soul"`
+	Temperature float64   `json:"temperature"`
+	IsActive    bool      `json:"is_active"`
 }
 
 type AgentTaskResponse struct {

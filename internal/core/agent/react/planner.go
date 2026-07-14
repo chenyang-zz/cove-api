@@ -389,8 +389,13 @@ func (p *AutoPlanner) modelMessages(ctx context.Context, state State) ([]*llm.Me
 }
 
 // toolCallingMessages 把当前对话历史规整为工具调用模型的输入。
+// 非空时在最前注入 state.SystemPrompt（业务人设），避免 FC 路径丢失角色。
 func toolCallingMessages(state State) []*llm.Message {
-	messages := llm.CloneMessages(state.Input.Messages)
+	messages := make([]*llm.Message, 0, len(state.Input.Messages)+len(state.Steps)*2+2)
+	if sp := strings.TrimSpace(state.SystemPrompt); sp != "" {
+		messages = append(messages, llm.SystemMessage(sp))
+	}
+	messages = append(messages, llm.CloneMessages(state.Input.Messages)...)
 	if query := strings.TrimSpace(state.Input.Query); query != "" {
 		messages = append(messages, &llm.Message{
 			Role:    llm.UserRole,

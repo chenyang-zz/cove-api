@@ -56,6 +56,21 @@ func (r *AgentPersonaRepository) FindByID(ctx context.Context, userID uuid.UUID,
 	return agentPersona, nil
 }
 
+// FindActive 返回用户当前 is_active 的角色；不存在时返回 (nil, nil)。
+func (r *AgentPersonaRepository) FindActive(ctx context.Context, userID uuid.UUID) (*models.AgentPersona, error) {
+	agentPersona := &models.AgentPersona{}
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND is_active = ?", userID, true).
+		First(agentPersona).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, xerr.Wrapf(err, "查询生效智能体人格失败")
+	}
+	return agentPersona, nil
+}
+
 func (r *AgentPersonaRepository) Update(ctx context.Context, userID uuid.UUID, agentPersona *models.AgentPersona) (*models.AgentPersona, error) {
 	result := r.db.WithContext(ctx).
 		Model(&models.AgentPersona{}).

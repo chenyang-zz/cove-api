@@ -96,7 +96,7 @@ func TestReActParserRejectsInvalidActionInput(t *testing.T) {
 	}
 }
 
-// TestReActPromptBuilderRendersEmbeddedTemplate 验证 ReAct 默认 builder 直接渲染 core 内置模板，无需外部注册。
+// TestReActPromptBuilderRendersEmbeddedTemplate 验证人设在前、ReAct 协议在后。
 func TestReActPromptBuilderRendersEmbeddedTemplate(t *testing.T) {
 	builder := NewReActPromptBuilder()
 
@@ -114,10 +114,16 @@ func TestReActPromptBuilderRendersEmbeddedTemplate(t *testing.T) {
 	if len(messages) != 2 {
 		t.Fatalf("ReActPromptBuilder.Build messages len = %d, want 2", len(messages))
 	}
+	system := messages[0].Content
 	for _, want := range []string{"Cove", "knowledge_search", "检索知识库", "Action Input"} {
-		if !strings.Contains(messages[0].Content, want) {
-			t.Fatalf("ReActPromptBuilder.Build system = %q, want %q", messages[0].Content, want)
+		if !strings.Contains(system, want) {
+			t.Fatalf("ReActPromptBuilder.Build system = %q, want %q", system, want)
 		}
+	}
+	personaIdx := strings.Index(system, "Cove")
+	protocolIdx := strings.Index(system, "可用工具")
+	if personaIdx < 0 || protocolIdx < 0 || personaIdx > protocolIdx {
+		t.Fatalf("system order = %q, want persona before protocol", system)
 	}
 }
 
@@ -346,6 +352,26 @@ func TestAgentRunUsesToolCallingClientByDefault(t *testing.T) {
 	}
 	if len(model.messages) != 0 {
 		t.Fatalf("llm.Client.Invoke calls = %d, want 0", len(model.messages))
+	}
+}
+
+// 验证点：function calling 路径必须把 SystemPrompt 作为首条 system 消息注入。
+func TestAgentRunToolCallingInjectsSystemPrompt(t *testing.T) {
+	ctx := context.Background()
+	model := &fakeToolCallingLLM{
+		toolOutputs: []*llm.LLMResult{{Text: "in character"}},
+	}
+	persona := "# Soul\n娇媚\n\n# Identity\n你是波波"
+	_, err := newTestAgent(model, coretool.NewRegistry(), WithSystemPrompt(persona)).Run(ctx, Input{Query: "你好"})
+	if err != nil {
+		t.Fatalf("Agent.Run(tool calling system prompt) error = %v, want nil", err)
+	}
+	if len(model.toolInputs) != 1 || len(model.toolInputs[0]) == 0 {
+		t.Fatalf("toolInputs = %#v, want at least one message", model.toolInputs)
+	}
+	first := model.toolInputs[0][0]
+	if first.Role != llm.SystemRole || !strings.Contains(first.Content, "# Soul") || !strings.Contains(first.Content, "波波") {
+		t.Fatalf("first tool-calling message = %#v, want system persona", first)
 	}
 }
 

@@ -12,6 +12,8 @@ type AgentPersonaRepository interface {
 	Create(ctx context.Context, userID uuid.UUID, agentPersona *models.AgentPersona) (*models.AgentPersona, error)
 	List(ctx context.Context, userID uuid.UUID) ([]*models.AgentPersona, error)
 	FindByID(ctx context.Context, userID uuid.UUID, agentPersonaID uuid.UUID) (*models.AgentPersona, error)
+	// FindActive 返回用户当前生效的角色；不存在时返回 (nil, nil)。
+	FindActive(ctx context.Context, userID uuid.UUID) (*models.AgentPersona, error)
 	Update(ctx context.Context, userID uuid.UUID, agentPersona *models.AgentPersona) (*models.AgentPersona, error)
 	UpdateFields(ctx context.Context, userID uuid.UUID, agentPersonaID uuid.UUID, agentPersona *models.AgentPersona, fields *AgentPersonaUpdateFields) (*models.AgentPersona, error)
 	Delete(ctx context.Context, userID uuid.UUID, agentPersonaID uuid.UUID) error
@@ -38,8 +40,12 @@ func (f *AgentPersonaUpdateFields) AvatarKey() *AgentPersonaUpdateFields {
 	return f.add("avatar_key")
 }
 
-func (f *AgentPersonaUpdateFields) SystemPrompt() *AgentPersonaUpdateFields {
-	return f.add("system_prompt")
+func (f *AgentPersonaUpdateFields) Identity() *AgentPersonaUpdateFields {
+	return f.add("identity")
+}
+
+func (f *AgentPersonaUpdateFields) Soul() *AgentPersonaUpdateFields {
+	return f.add("soul")
 }
 
 func (f *AgentPersonaUpdateFields) Temperature() *AgentPersonaUpdateFields {

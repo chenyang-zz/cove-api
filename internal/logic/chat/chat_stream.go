@@ -7,11 +7,13 @@ import (
 
 	"log/slog"
 
+	corecontext "github.com/boxify/api-go/internal/core/context"
 	"github.com/boxify/api-go/internal/core/llm"
 	flow "github.com/boxify/api-go/internal/domain/flow"
 	flowchat "github.com/boxify/api-go/internal/domain/flow/chat"
 	"github.com/boxify/api-go/internal/domain/types"
 	"github.com/boxify/api-go/internal/infrastructure/realtime"
+	"github.com/boxify/api-go/internal/mapper"
 	"github.com/boxify/api-go/internal/models"
 	"github.com/boxify/api-go/internal/observability/xlog"
 	"github.com/boxify/api-go/internal/svc"
@@ -167,6 +169,7 @@ func (l *ChatStreamLogic) runChatTurnBG(
 		EnableKnowledge:      runtimeConfig.EnableKnowledge,
 		Temperature:          runtimeConfig.Temperature,
 		SystemPrompt:         runtimeConfig.SystemPrompt,
+		ContextPolicy:        runtimeConfig.ContextPolicy,
 	})
 	if err != nil {
 		l.log.WarnContext(ctx, "后台生成回复失败", slog.String("error", err.Error()))
@@ -274,6 +277,7 @@ type chatRuntimeConfig struct {
 	EnableKnowledge bool
 	Temperature     float64
 	SystemPrompt    string
+	ContextPolicy   *corecontext.Policy
 }
 
 // chatAgentConfig 获取Agent配置
@@ -305,6 +309,7 @@ func resolveChatRuntimeConfig(input *request.ChatStreamRequest, agentConfig *mod
 	config := chatRuntimeConfig{
 		EnableKnowledge: false,
 		Temperature:     defaultChatTemperature,
+		ContextPolicy:   mapper.AgentConfigToContextPolicy(agentConfig),
 	}
 	if agentConfig != nil && agentConfig.Temperature > 0 {
 		config.Temperature = agentConfig.Temperature

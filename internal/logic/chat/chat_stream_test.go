@@ -208,6 +208,19 @@ func TestResolveChatRuntimeConfigDefaultsTemperatureAndPrompt(t *testing.T) {
 	}
 }
 
+// TestResolveChatRuntimeConfigUsesDatabaseContextPolicy 验证聊天上下文预算只从 AgentConfig 数据库字段构建。
+func TestResolveChatRuntimeConfigUsesDatabaseContextPolicy(t *testing.T) {
+	agentConfig := &models.AgentConfig{
+		ContextEnabled: false, ContextWindowTokens: 65536, ContextOutputReserveTokens: 2048,
+		ContextSafetyMarginTokens: 256, ContextTriggerRatio: 0.9, ContextTargetRatio: 0.7,
+		ContextKeepRecentTokens: 12000, ContextSummaryMaxTokens: 768,
+	}
+	got := resolveChatRuntimeConfig(nil, agentConfig, nil)
+	if got.ContextPolicy == nil || got.ContextPolicy.Enabled || got.ContextPolicy.WindowTokens != 65536 || got.ContextPolicy.SummaryMaxTokens != 768 {
+		t.Fatalf("resolveChatRuntimeConfig().ContextPolicy = %#v, want persisted database policy", got.ContextPolicy)
+	}
+}
+
 // 验证有生效人格时 SystemPrompt 含 Soul/Identity（先 Soul），且不注入 Cove intro。
 func TestResolveChatRuntimeConfigUsesActivePersona(t *testing.T) {
 	persona := &models.AgentPersona{

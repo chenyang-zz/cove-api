@@ -7,15 +7,23 @@
 package request
 
 type UpdateAgentConfigRequest struct {
-	SystemPrompt       *string  `json:"system_prompt" binding:"omitempty,max=4000"`
-	Temperature        *float64 `json:"temperature" binding:"omitempty,gte=0.0,lte=2.0"`
-	EnableKnowledge    *bool    `json:"enable_knowledge" binding:"omitempty"`
-	EnableMemory       *bool    `json:"enable_memory" binding:"omitempty"`
-	EnableWebSearch    *bool    `json:"enable_web_search" binding:"omitempty"`
-	EnableActiveRecall *bool    `json:"enable_active_recall" binding:"omitempty"`
-	EnableCrossSession *bool    `json:"enalbe_cross_session" binding:"omitempty"`
-	ShowAvatar         *bool    `json:"show_avatar" binding:"omitempty"`
-	HumanMode          *bool    `json:"human_mode" binding:"omitempty"`
+	SystemPrompt               *string  `json:"system_prompt" binding:"omitempty,max=4000"`
+	Temperature                *float64 `json:"temperature" binding:"omitempty,gte=0.0,lte=2.0"`
+	EnableKnowledge            *bool    `json:"enable_knowledge" binding:"omitempty"`
+	EnableMemory               *bool    `json:"enable_memory" binding:"omitempty"`
+	EnableWebSearch            *bool    `json:"enable_web_search" binding:"omitempty"`
+	EnableActiveRecall         *bool    `json:"enable_active_recall" binding:"omitempty"`
+	EnableCrossSession         *bool    `json:"enalbe_cross_session" binding:"omitempty"`
+	ShowAvatar                 *bool    `json:"show_avatar" binding:"omitempty"`
+	HumanMode                  *bool    `json:"human_mode" binding:"omitempty"`
+	ContextEnabled             *bool    `json:"context_enabled" binding:"omitempty"`
+	ContextWindowTokens        *int     `json:"context_window_tokens" binding:"omitempty,gte=1024"`
+	ContextOutputReserveTokens *int     `json:"context_output_reserve_tokens" binding:"omitempty,gte=0"`
+	ContextSafetyMarginTokens  *int     `json:"context_safety_margin_tokens" binding:"omitempty,gte=0"`
+	ContextTriggerRatio        *float64 `json:"context_trigger_ratio" binding:"omitempty,gt=0,lte=1"`
+	ContextTargetRatio         *float64 `json:"context_target_ratio" binding:"omitempty,gt=0,lte=1"`
+	ContextKeepRecentTokens    *int     `json:"context_keep_recent_tokens" binding:"omitempty,gte=1"`
+	ContextSummaryMaxTokens    *int64   `json:"context_summary_max_tokens" binding:"omitempty,gte=1"`
 }
 
 type OptimizePromptRequest struct {

@@ -3,6 +3,30 @@
     "schemas": {
       "AgentConfigResponse": {
         "properties": {
+          "context_enabled": {
+            "type": "boolean"
+          },
+          "context_keep_recent_tokens": {
+            "type": "integer"
+          },
+          "context_output_reserve_tokens": {
+            "type": "integer"
+          },
+          "context_safety_margin_tokens": {
+            "type": "integer"
+          },
+          "context_summary_max_tokens": {
+            "type": "integer"
+          },
+          "context_target_ratio": {
+            "type": "number"
+          },
+          "context_trigger_ratio": {
+            "type": "number"
+          },
+          "context_window_tokens": {
+            "type": "integer"
+          },
           "enable_active_recall": {
             "type": "boolean"
           },
@@ -660,6 +684,30 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "context_enabled": {
+                    "type": "boolean"
+                  },
+                  "context_keep_recent_tokens": {
+                    "type": "integer"
+                  },
+                  "context_output_reserve_tokens": {
+                    "type": "integer"
+                  },
+                  "context_safety_margin_tokens": {
+                    "type": "integer"
+                  },
+                  "context_summary_max_tokens": {
+                    "type": "integer"
+                  },
+                  "context_target_ratio": {
+                    "type": "number"
+                  },
+                  "context_trigger_ratio": {
+                    "type": "number"
+                  },
+                  "context_window_tokens": {
+                    "type": "integer"
+                  },
                   "enable_active_recall": {
                     "type": "boolean"
                   },

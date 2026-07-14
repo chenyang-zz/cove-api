@@ -14,15 +14,23 @@ import (
 )
 
 type AgentConfigResponse struct {
-	SystemPrompt       string  `json:"system_prompt"`
-	Temperature        float64 `json:"temperature"`
-	EnableKnowledge    bool    `json:"enable_knowledge"`
-	EnableMemory       bool    `json:"enable_memory"`
-	EnableWebSearch    bool    `json:"enable_web_search"`
-	EnableActiveRecall bool    `json:"enable_active_recall"`
-	EnableCrossSession bool    `json:"enalbe_cross_session"`
-	ShowAvatar         bool    `json:"show_avatar"`
-	HumanMode          bool    `json:"human_mode"`
+	SystemPrompt               string  `json:"system_prompt"`
+	Temperature                float64 `json:"temperature"`
+	EnableKnowledge            bool    `json:"enable_knowledge"`
+	EnableMemory               bool    `json:"enable_memory"`
+	EnableWebSearch            bool    `json:"enable_web_search"`
+	EnableActiveRecall         bool    `json:"enable_active_recall"`
+	EnableCrossSession         bool    `json:"enalbe_cross_session"`
+	ShowAvatar                 bool    `json:"show_avatar"`
+	HumanMode                  bool    `json:"human_mode"`
+	ContextEnabled             bool    `json:"context_enabled"`
+	ContextWindowTokens        int     `json:"context_window_tokens"`
+	ContextOutputReserveTokens int     `json:"context_output_reserve_tokens"`
+	ContextSafetyMarginTokens  int     `json:"context_safety_margin_tokens"`
+	ContextTriggerRatio        float64 `json:"context_trigger_ratio"`
+	ContextTargetRatio         float64 `json:"context_target_ratio"`
+	ContextKeepRecentTokens    int     `json:"context_keep_recent_tokens"`
+	ContextSummaryMaxTokens    int64   `json:"context_summary_max_tokens"`
 }
 
 type AgentPersonaResponse struct {

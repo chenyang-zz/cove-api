@@ -50,30 +50,31 @@ type ServiceContext struct {
 	Storage       storage.Store
 	URLSigner     storage.URLSigner
 
-	UserRepo            repository.UserRepository
-	RefreshTokenRepo    repository.RefreshTokenRepository
-	MemoryGraphRepo     repository.MemoryGraphRepository
-	ModelConfigRepo     repository.ModelConfigRepository
-	ConversationRepo    repository.ConversationRepository
-	MessageRepo         repository.MessageRepository
-	MessageFeedbackRepo repository.MessageFeedbackRepository
-	AgentConfigRepo     repository.AgentConfigRepository
-	AgentPersonaRepo    repository.AgentPersonaRepository
-	AgentTaskRepo       repository.AgentTaskRepository
-	MCPServerRepo       repository.MCPServerRepository
-	KnowledgeBaseRepo   repository.KnowledgeBaseRepository
-	SkillRepo           repository.SkillRepository
-	ToolConfigRepo      repository.ToolConfigRepository
-	DocumentRepo        repository.DocumentRepository
-	ImageRepo           repository.ImageRepository
-	TagRepo             repository.TagRepository
-	RAGChunkRepo        repository.RAGChunkRepository
-	RAGSearcher         *ragsearch.Searcher[models.RAGChunkSource]
-	RAGClassifier       *ragclassifier.Classifier
-	RAGDocumentParser   *ragparser.Parser
-	RAGChunker          *ragchunker.Chunker
-	RAGWebCrawler       *webcrawl.Crawler
-	SkillRegistry       *domainskills.Registry
+	UserRepo                     repository.UserRepository
+	RefreshTokenRepo             repository.RefreshTokenRepository
+	MemoryGraphRepo              repository.MemoryGraphRepository
+	ModelConfigRepo              repository.ModelConfigRepository
+	ConversationRepo             repository.ConversationRepository
+	ConversationContextStateRepo repository.ConversationContextStateRepository
+	MessageRepo                  repository.MessageRepository
+	MessageFeedbackRepo          repository.MessageFeedbackRepository
+	AgentConfigRepo              repository.AgentConfigRepository
+	AgentPersonaRepo             repository.AgentPersonaRepository
+	AgentTaskRepo                repository.AgentTaskRepository
+	MCPServerRepo                repository.MCPServerRepository
+	KnowledgeBaseRepo            repository.KnowledgeBaseRepository
+	SkillRepo                    repository.SkillRepository
+	ToolConfigRepo               repository.ToolConfigRepository
+	DocumentRepo                 repository.DocumentRepository
+	ImageRepo                    repository.ImageRepository
+	TagRepo                      repository.TagRepository
+	RAGChunkRepo                 repository.RAGChunkRepository
+	RAGSearcher                  *ragsearch.Searcher[models.RAGChunkSource]
+	RAGClassifier                *ragclassifier.Classifier
+	RAGDocumentParser            *ragparser.Parser
+	RAGChunker                   *ragchunker.Chunker
+	RAGWebCrawler                *webcrawl.Crawler
+	SkillRegistry                *domainskills.Registry
 
 	SecretCipher *security.SecretCipher
 	TokenIssuer  *security.TokenIssuer
@@ -199,6 +200,7 @@ func bindPostgresRepositories(s *ServiceContext, db *gorm.DB) {
 	s.RefreshTokenRepo = repositorypostgres.NewRefreshTokenRepository(db)
 	s.ModelConfigRepo = repositorypostgres.NewModelConfigRepository(db)
 	s.ConversationRepo = repositorypostgres.NewConversationRepository(db)
+	s.ConversationContextStateRepo = repositorypostgres.NewConversationContextStateRepository(db)
 	s.MessageRepo = repositorypostgres.NewMessageRepository(db)
 	s.MessageFeedbackRepo = repositorypostgres.NewMessageFeedbackRepository(db)
 	s.AgentConfigRepo = repositorypostgres.NewAgentConfigRepository(db)
@@ -228,45 +230,46 @@ func (s *ServiceContext) WithTx(ctx context.Context, fn func(txSvc *ServiceConte
 // newTxContext 返回仅包含事务内执行所需字段的浅拷贝，跳过 closeOnce 等锁字段。
 func newTxContext(s *ServiceContext) ServiceContext {
 	return ServiceContext{
-		Config:              s.Config,
-		Neo4j:               s.Neo4j,
-		Redis:               s.Redis,
-		Realtime:            s.Realtime,
-		TaskProducer:        s.TaskProducer,
-		Elasticsearch:       s.Elasticsearch,
-		Storage:             s.Storage,
-		URLSigner:           s.URLSigner,
-		UserRepo:            s.UserRepo,
-		RefreshTokenRepo:    s.RefreshTokenRepo,
-		MemoryGraphRepo:     s.MemoryGraphRepo,
-		ModelConfigRepo:     s.ModelConfigRepo,
-		ConversationRepo:    s.ConversationRepo,
-		MessageRepo:         s.MessageRepo,
-		MessageFeedbackRepo: s.MessageFeedbackRepo,
-		AgentConfigRepo:     s.AgentConfigRepo,
-		AgentPersonaRepo:    s.AgentPersonaRepo,
-		AgentTaskRepo:       s.AgentTaskRepo,
-		MCPServerRepo:       s.MCPServerRepo,
-		KnowledgeBaseRepo:   s.KnowledgeBaseRepo,
-		SkillRepo:           s.SkillRepo,
-		ToolConfigRepo:      s.ToolConfigRepo,
-		DocumentRepo:        s.DocumentRepo,
-		ImageRepo:           s.ImageRepo,
-		TagRepo:             s.TagRepo,
-		RAGChunkRepo:        s.RAGChunkRepo,
-		RAGSearcher:         s.RAGSearcher,
-		RAGClassifier:       s.RAGClassifier,
-		RAGDocumentParser:   s.RAGDocumentParser,
-		RAGChunker:          s.RAGChunker,
-		RAGWebCrawler:       s.RAGWebCrawler,
-		SkillRegistry:       s.SkillRegistry,
-		SecretCipher:        s.SecretCipher,
-		TokenIssuer:         s.TokenIssuer,
-		PromptManager:       s.PromptManager,
-		PromptClient:        s.PromptClient,
-		LLMManager:          s.LLMManager,
-		MCPToolService:      s.MCPToolService,
-		closeErr:            s.closeErr,
+		Config:                       s.Config,
+		Neo4j:                        s.Neo4j,
+		Redis:                        s.Redis,
+		Realtime:                     s.Realtime,
+		TaskProducer:                 s.TaskProducer,
+		Elasticsearch:                s.Elasticsearch,
+		Storage:                      s.Storage,
+		URLSigner:                    s.URLSigner,
+		UserRepo:                     s.UserRepo,
+		RefreshTokenRepo:             s.RefreshTokenRepo,
+		MemoryGraphRepo:              s.MemoryGraphRepo,
+		ModelConfigRepo:              s.ModelConfigRepo,
+		ConversationRepo:             s.ConversationRepo,
+		ConversationContextStateRepo: s.ConversationContextStateRepo,
+		MessageRepo:                  s.MessageRepo,
+		MessageFeedbackRepo:          s.MessageFeedbackRepo,
+		AgentConfigRepo:              s.AgentConfigRepo,
+		AgentPersonaRepo:             s.AgentPersonaRepo,
+		AgentTaskRepo:                s.AgentTaskRepo,
+		MCPServerRepo:                s.MCPServerRepo,
+		KnowledgeBaseRepo:            s.KnowledgeBaseRepo,
+		SkillRepo:                    s.SkillRepo,
+		ToolConfigRepo:               s.ToolConfigRepo,
+		DocumentRepo:                 s.DocumentRepo,
+		ImageRepo:                    s.ImageRepo,
+		TagRepo:                      s.TagRepo,
+		RAGChunkRepo:                 s.RAGChunkRepo,
+		RAGSearcher:                  s.RAGSearcher,
+		RAGClassifier:                s.RAGClassifier,
+		RAGDocumentParser:            s.RAGDocumentParser,
+		RAGChunker:                   s.RAGChunker,
+		RAGWebCrawler:                s.RAGWebCrawler,
+		SkillRegistry:                s.SkillRegistry,
+		SecretCipher:                 s.SecretCipher,
+		TokenIssuer:                  s.TokenIssuer,
+		PromptManager:                s.PromptManager,
+		PromptClient:                 s.PromptClient,
+		LLMManager:                   s.LLMManager,
+		MCPToolService:               s.MCPToolService,
+		closeErr:                     s.closeErr,
 	}
 }
 

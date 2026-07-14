@@ -46,6 +46,7 @@ func (l *UpdateAgentConfigLogic) UpdateAgentConfig(userID uuid.UUID, input *requ
 	}
 
 	patch := &models.AgentConfig{}
+	candidate := *config
 	fields := repository.NewAgentConfigUpdateFields()
 	if input.SystemPrompt != nil {
 		patch.SystemPrompt = *input.SystemPrompt
@@ -82,6 +83,41 @@ func (l *UpdateAgentConfigLogic) UpdateAgentConfig(userID uuid.UUID, input *requ
 	if input.HumanMode != nil {
 		patch.HumanMode = *input.HumanMode
 		fields.HumanMode()
+	}
+	if input.ContextEnabled != nil {
+		patch.ContextEnabled, candidate.ContextEnabled = *input.ContextEnabled, *input.ContextEnabled
+		fields.ContextEnabled()
+	}
+	if input.ContextWindowTokens != nil {
+		patch.ContextWindowTokens, candidate.ContextWindowTokens = *input.ContextWindowTokens, *input.ContextWindowTokens
+		fields.ContextWindowTokens()
+	}
+	if input.ContextOutputReserveTokens != nil {
+		patch.ContextOutputReserveTokens, candidate.ContextOutputReserveTokens = *input.ContextOutputReserveTokens, *input.ContextOutputReserveTokens
+		fields.ContextOutputReserveTokens()
+	}
+	if input.ContextSafetyMarginTokens != nil {
+		patch.ContextSafetyMarginTokens, candidate.ContextSafetyMarginTokens = *input.ContextSafetyMarginTokens, *input.ContextSafetyMarginTokens
+		fields.ContextSafetyMarginTokens()
+	}
+	if input.ContextTriggerRatio != nil {
+		patch.ContextTriggerRatio, candidate.ContextTriggerRatio = *input.ContextTriggerRatio, *input.ContextTriggerRatio
+		fields.ContextTriggerRatio()
+	}
+	if input.ContextTargetRatio != nil {
+		patch.ContextTargetRatio, candidate.ContextTargetRatio = *input.ContextTargetRatio, *input.ContextTargetRatio
+		fields.ContextTargetRatio()
+	}
+	if input.ContextKeepRecentTokens != nil {
+		patch.ContextKeepRecentTokens, candidate.ContextKeepRecentTokens = *input.ContextKeepRecentTokens, *input.ContextKeepRecentTokens
+		fields.ContextKeepRecentTokens()
+	}
+	if input.ContextSummaryMaxTokens != nil {
+		patch.ContextSummaryMaxTokens, candidate.ContextSummaryMaxTokens = *input.ContextSummaryMaxTokens, *input.ContextSummaryMaxTokens
+		fields.ContextSummaryMaxTokens()
+	}
+	if err := mapper.AgentConfigToContextPolicy(&candidate).Validate(); err != nil {
+		return nil, xerr.BadRequest(err.Error())
 	}
 
 	config, err = l.svcCtx.AgentConfigRepo.UpdateFields(l.ctx, userID, config.ID, patch, fields)

@@ -120,6 +120,13 @@ type PromptBuilder interface {
 	Build(ctx context.Context, state State) ([]*llm.Message, error)
 }
 
+// MessagePreparer 在模型调用前对完整消息和工具描述执行最终规整。
+//
+// 实现不得修改传入切片；返回错误会中止当前 Agent 运行。
+type MessagePreparer interface {
+	PrepareMessages(ctx context.Context, messages []*llm.Message, tools []coretool.Descriptor) ([]*llm.Message, error)
+}
+
 // Planner 负责把当前状态转成下一步标准化决策。
 type Planner interface {
 	Plan(ctx context.Context, state State, opts ...llm.ModelCallOption) (Decision, error)

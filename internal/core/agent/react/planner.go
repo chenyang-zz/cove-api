@@ -36,6 +36,7 @@ type ReActTextPlanner struct {
 	client        llm.Client
 	promptBuilder PromptBuilder
 	parser        Parser
+	preparer      MessagePreparer
 }
 
 // NewReActTextPlanner 创建文本 ReAct planner。
@@ -109,7 +110,7 @@ func (p *ReActTextPlanner) planStreamTrace(ctx context.Context, state State, emi
 	if p.promptBuilder == nil {
 		return plannerResult{}, errors.New("react prompt builder is nil")
 	}
-	messages, err := p.promptBuilder.Build(ctx, cloneState(state))
+	messages, err := p.modelMessages(ctx, state)
 	if err != nil {
 		return plannerResult{}, err
 	}
@@ -160,12 +161,17 @@ func (p *ReActTextPlanner) modelMessages(ctx context.Context, state State) ([]*l
 	if p.promptBuilder == nil {
 		return nil, errors.New("react prompt builder is nil")
 	}
-	return p.promptBuilder.Build(ctx, cloneState(state))
+	messages, err := p.promptBuilder.Build(ctx, cloneState(state))
+	if err != nil || p.preparer == nil {
+		return messages, err
+	}
+	return p.preparer.PrepareMessages(ctx, messages, state.Tools)
 }
 
 // FunctionCallingPlanner 使用模型原生工具调用能力生成决策。
 type FunctionCallingPlanner struct {
-	client llm.ToolCallingClient
+	client   llm.ToolCallingClient
+	preparer MessagePreparer
 }
 
 // NewFunctionCallingPlanner 创建 function calling planner。
@@ -194,7 +200,10 @@ func (p *FunctionCallingPlanner) planTrace(ctx context.Context, state State, opt
 	if !p.SupportsToolCalling() {
 		return plannerResult{}, ErrToolCallingUnsupported
 	}
-	messages := toolCallingMessages(state)
+	messages, err := p.modelMessages(ctx, state)
+	if err != nil {
+		return plannerResult{}, err
+	}
 	callOpts := make([]llm.ModelCallOption, 0, len(opts)+1)
 	callOpts = append(callOpts, opts...)
 	if len(state.Tools) > 0 {
@@ -225,7 +234,10 @@ func (p *FunctionCallingPlanner) planStreamTrace(ctx context.Context, state Stat
 	if !ok {
 		return p.planTrace(ctx, state, opts...)
 	}
-	messages := toolCallingMessages(state)
+	messages, err := p.modelMessages(ctx, state)
+	if err != nil {
+		return plannerResult{}, err
+	}
 	callOpts := make([]llm.ModelCallOption, 0, len(opts)+1)
 	callOpts = append(callOpts, opts...)
 	if len(state.Tools) > 0 {
@@ -276,7 +288,11 @@ func (p *FunctionCallingPlanner) planStreamTrace(ctx context.Context, state Stat
 }
 
 func (p *FunctionCallingPlanner) modelMessages(ctx context.Context, state State) ([]*llm.Message, error) {
-	return toolCallingMessages(state), nil
+	messages := toolCallingMessages(state)
+	if p.preparer == nil {
+		return messages, nil
+	}
+	return p.preparer.PrepareMessages(ctx, messages, state.Tools)
 }
 
 // AutoPlanner 按配置在 function calling 和文本 ReAct 之间选择执行路径。
@@ -302,6 +318,18 @@ func NewAutoPlanner(client llm.Client, builder PromptBuilder, parser Parser, ena
 		reactPlanner:       NewReActTextPlanner(client, builder, parser),
 		toolCallingEnabled: enabled,
 		fallbackToReAct:    fallback,
+	}
+}
+
+func (p *AutoPlanner) setMessagePreparer(preparer MessagePreparer) {
+	if p == nil || preparer == nil {
+		return
+	}
+	if p.toolPlanner != nil {
+		p.toolPlanner.preparer = preparer
+	}
+	if p.reactPlanner != nil {
+		p.reactPlanner.preparer = preparer
 	}
 }
 

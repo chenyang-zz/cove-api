@@ -15,6 +15,7 @@ type Agent struct {
 	promptBuilder      PromptBuilder
 	parser             Parser
 	planner            Planner
+	messagePreparer    MessagePreparer
 	toolCallingEnabled bool
 	fallbackToReAct    bool
 }
@@ -41,7 +42,9 @@ func New(client llm.Client, registry *coretool.Registry, opts ...Option) *Agent 
 		a.promptBuilder = NewReActPromptBuilder()
 	}
 	if a.planner == nil {
-		a.planner = NewAutoPlanner(a.base.Client(), a.promptBuilder, a.parser, a.toolCallingEnabled, a.fallbackToReAct)
+		autoPlanner := NewAutoPlanner(a.base.Client(), a.promptBuilder, a.parser, a.toolCallingEnabled, a.fallbackToReAct)
+		autoPlanner.setMessagePreparer(a.messagePreparer)
+		a.planner = autoPlanner
 	}
 	return a
 }

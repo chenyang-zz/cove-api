@@ -132,3 +132,64 @@ func TestConversationRepositoryUpdateFieldsWhenPostgresEnvIsConfigured(t *testin
 		t.Fatalf("unselected fields changed: enable_tools=%v is_group=%v", updated.EnableTools, updated.IsGroup)
 	}
 }
+
+// TestConversationContextStateRepositoryUsesCASAndUserScope 验证摘要状态按用户隔离、使用乐观锁更新并随会话级联删除。
+func TestConversationContextStateRepositoryUsesCASAndUserScope(t *testing.T) {
+	db := newAuthTestDB(t)
+	ctx := context.Background()
+	userRepo := repositorypostgres.NewUserRepository(db)
+	conversationRepo := repositorypostgres.NewConversationRepository(db)
+	stateRepo := repositorypostgres.NewConversationContextStateRepository(db)
+
+	owner, err := userRepo.Create(ctx, &models.User{Username: "context-owner-" + uuid.NewString(), PasswordHash: "hash"})
+	if err != nil {
+		t.Fatalf("Create owner error = %v", err)
+	}
+	other, err := userRepo.Create(ctx, &models.User{Username: "context-other-" + uuid.NewString(), PasswordHash: "hash"})
+	if err != nil {
+		t.Fatalf("Create other error = %v", err)
+	}
+	t.Cleanup(func() {
+		db.WithContext(context.Background()).Exec("DELETE FROM conversations WHERE user_id = ?", owner.ID)
+		db.WithContext(context.Background()).Exec("DELETE FROM users WHERE id IN ?", []uuid.UUID{owner.ID, other.ID})
+	})
+	conversation, err := conversationRepo.Create(ctx, owner.ID, &models.Conversation{Title: "context"})
+	if err != nil {
+		t.Fatalf("Create conversation error = %v", err)
+	}
+	throughID := uuid.New()
+	state := &models.ConversationContextState{
+		ConversationID: conversation.ID, Summary: "summary-1", ThroughMessageID: &throughID,
+		Version: 1, FormatVersion: 1, PolicyFingerprint: "fingerprint",
+	}
+
+	saved, err := stateRepo.CompareAndSwapContextState(ctx, owner.ID, 0, state)
+	if err != nil || !saved {
+		t.Fatalf("CompareAndSwapContextState(create) saved=%v error=%v, want true nil", saved, err)
+	}
+	if saved, err = stateRepo.CompareAndSwapContextState(ctx, owner.ID, 0, state); err != nil || saved {
+		t.Fatalf("CompareAndSwapContextState(stale create) saved=%v error=%v, want false nil", saved, err)
+	}
+	if got, err := stateRepo.LoadContextState(ctx, other.ID, conversation.ID); err != nil || got != nil {
+		t.Fatalf("LoadContextState(other user) = %#v, error=%v, want nil nil", got, err)
+	}
+
+	state.Summary = "summary-2"
+	state.Version = 2
+	saved, err = stateRepo.CompareAndSwapContextState(ctx, owner.ID, 1, state)
+	if err != nil || !saved {
+		t.Fatalf("CompareAndSwapContextState(update) saved=%v error=%v, want true nil", saved, err)
+	}
+	loaded, err := stateRepo.LoadContextState(ctx, owner.ID, conversation.ID)
+	if err != nil || loaded == nil || loaded.Summary != "summary-2" || loaded.Version != 2 {
+		t.Fatalf("LoadContextState(owner) = %#v, error=%v, want summary-2 version 2", loaded, err)
+	}
+
+	if err := conversationRepo.Delete(ctx, owner.ID, conversation.ID); err != nil {
+		t.Fatalf("Delete conversation error = %v", err)
+	}
+	var count int64
+	if err := db.Model(&models.ConversationContextState{}).Where("conversation_id = ?", conversation.ID).Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("context state count after cascade = %d, error=%v, want 0 nil", count, err)
+	}
+}

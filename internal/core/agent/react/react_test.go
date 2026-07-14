@@ -166,6 +166,34 @@ func TestAgentRunReturnsDirectFinalAnswer(t *testing.T) {
 	}
 }
 
+// TestAgentRunPreparesTextMessagesBeforeModelCall 验证文本 ReAct 路径会把规整后的消息发送给模型。
+func TestAgentRunPreparesTextMessagesBeforeModelCall(t *testing.T) {
+	model := &fakeNonStreamingLLM{outputs: []string{"Thought: done\nFinal Answer: ok"}}
+	preparer := &fakeMessagePreparer{}
+	agent := New(model, nil, WithToolCallingEnabled(false), WithMessagePreparer(preparer))
+
+	if _, err := agent.Run(context.Background(), Input{Query: "question"}); err != nil {
+		t.Fatalf("Agent.Run(text preparer) error = %v, want nil", err)
+	}
+	if preparer.calls < 1 || len(model.messages) != 1 || !strings.Contains(joinMessages(model.messages[0]), "prepared") {
+		t.Fatalf("preparer calls = %d, model messages = %#v, want prepared marker", preparer.calls, model.messages)
+	}
+}
+
+// TestAgentRunPreparesToolCallingMessagesBeforeModelCall 验证原生工具调用路径也使用同一消息规整器。
+func TestAgentRunPreparesToolCallingMessagesBeforeModelCall(t *testing.T) {
+	model := &fakeNonStreamingToolCallingLLM{toolOutputs: []*llm.LLMResult{{Text: "done"}}}
+	preparer := &fakeMessagePreparer{}
+	agent := New(model, nil, WithMessagePreparer(preparer))
+
+	if _, err := agent.Run(context.Background(), Input{Query: "question"}); err != nil {
+		t.Fatalf("Agent.Run(tool preparer) error = %v, want nil", err)
+	}
+	if preparer.calls < 1 || len(model.toolInputs) != 1 || !strings.Contains(joinMessages(model.toolInputs[0]), "prepared") {
+		t.Fatalf("preparer calls = %d, tool messages = %#v, want prepared marker", preparer.calls, model.toolInputs)
+	}
+}
+
 // 验证点：文本 ReAct 流只会转发 Final Answer 后的文本增量，不泄露协议字段。
 func TestAgentRunStreamsOnlyReActFinalAnswerTokens(t *testing.T) {
 	ctx := context.Background()
@@ -725,6 +753,17 @@ type fakeToolCallingLLM struct {
 	toolErr     error
 	toolInputs  [][]*llm.Message
 	toolOptions []llm.ModelCallOptions
+}
+
+type fakeMessagePreparer struct {
+	calls int
+}
+
+func (f *fakeMessagePreparer) PrepareMessages(_ context.Context, messages []*llm.Message, _ []coretool.Descriptor) ([]*llm.Message, error) {
+	f.calls++
+	prepared := cloneMessages(messages)
+	prepared = append(prepared, llm.SystemMessage("prepared"))
+	return prepared, nil
 }
 
 type fakeNonStreamingToolCallingLLM struct {

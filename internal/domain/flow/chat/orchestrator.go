@@ -14,6 +14,7 @@ import (
 
 	"github.com/boxify/api-go/internal/config"
 	corereact "github.com/boxify/api-go/internal/core/agent/react"
+	corecontext "github.com/boxify/api-go/internal/core/context"
 	"github.com/boxify/api-go/internal/core/llm"
 	coremcp "github.com/boxify/api-go/internal/core/mcp"
 	coretool "github.com/boxify/api-go/internal/core/tool"
@@ -37,6 +38,7 @@ type Input struct {
 	EnableKnowledge      bool
 	Temperature          float64
 	SystemPrompt         string
+	ContextPolicy        *corecontext.Policy
 }
 
 const (
@@ -106,7 +108,7 @@ func (o *Orchestrator) generate(ctx context.Context, input Input, events chan<- 
 		return generationResult{}, err
 	}
 
-	history, err := o.historyMessages(ctx, input.UserID, input.ConversationID, input.CurrentUserMessageID)
+	history, err := o.historyEntries(ctx, input.UserID, input.ConversationID, input.CurrentUserMessageID)
 	if err != nil {
 		return generationResult{}, err
 	}
@@ -128,15 +130,58 @@ func (o *Orchestrator) generate(ctx context.Context, input Input, events chan<- 
 	}()
 
 	hooks := &agentHooks{events: events, registry: registry}
+
+	// 如果启用上下文管理，则使用 corecontext.Manager 规整历史消息；否则直接使用原始历史。
+	historyMessages := contextEntryMessages(history)
+	var contextManager *corecontext.Manager
+	if input.ContextPolicy != nil && input.ContextPolicy.Enabled {
+		var store corecontext.Store
+		if o.svcCtx.ConversationContextStateRepo != nil {
+			store = newConversationContextStore(o.svcCtx.ConversationContextStateRepo, input.UserID, input.ConversationID)
+		}
+		contextManager, err = corecontext.NewManager(
+			corecontext.WithLLMClient(client),
+			corecontext.WithPolicy(input.ContextPolicy),
+			corecontext.WithStore(store),
+		)
+		if err != nil {
+			return generationResult{}, err
+		}
+		query := composeQuery(input.Message, input.Attachments)
+		prepared, prepareErr := contextManager.Prepare(runCtx, &corecontext.Input{
+			Key:     input.ConversationID.String(),
+			Entries: history,
+			Pinned: []*llm.Message{
+				llm.SystemMessage(strings.TrimSpace(input.SystemPrompt)),
+				llm.UserMessage(query),
+			},
+			Tools: registry.List(nil),
+		})
+		if prepareErr != nil {
+			return generationResult{}, prepareErr
+		}
+		historyMessages = prepared.Messages
+		o.log.DebugContext(runCtx, "完成模型上下文规整",
+			slog.Int("before_tokens", prepared.BeforeTokens),
+			slog.Int("after_tokens", prepared.AfterTokens),
+			slog.Bool("compacted", prepared.Compacted),
+			slog.Bool("fallback", prepared.UsedFallback),
+		)
+	}
+
 	// SystemPrompt 由 logic 层完整组装（人格 / Cove intro / AgentConfig），此处只透传。
 	options := []corereact.Option{
 		corereact.WithHooks(hooks),
 		corereact.WithSystemPrompt(strings.TrimSpace(input.SystemPrompt)),
 		corereact.WithModelOptions(llm.WithTemperature(input.Temperature)),
 	}
+	// 如果启用了上下文管理，则在 corereact 中注入 MessagePreparer，确保每轮生成前都使用规整后的历史。
+	if contextManager != nil {
+		options = append(options, corereact.WithMessagePreparer(contextManager))
+	}
 	result, err := corereact.New(client, registry, options...).Run(runCtx, corereact.Input{
 		Query:    composeQuery(input.Message, input.Attachments),
-		Messages: history,
+		Messages: historyMessages,
 	})
 	out := generationResult{
 		Partial: hooks.partial(),
@@ -153,24 +198,34 @@ func (o *Orchestrator) generate(ctx context.Context, input Input, events chan<- 
 	return out, nil
 }
 
-func (o *Orchestrator) historyMessages(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID, currentUserMessageID uuid.UUID) ([]*llm.Message, error) {
+func (o *Orchestrator) historyEntries(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID, currentUserMessageID uuid.UUID) ([]*corecontext.Entry, error) {
 	rows, err := o.svcCtx.MessageRepo.ListByConversationID(ctx, userID, conversationID)
 	if err != nil {
 		return nil, err
 	}
-	messages := make([]*llm.Message, 0, len(rows))
+	entries := make([]*corecontext.Entry, 0, len(rows))
 	for _, row := range rows {
 		if row == nil || row.ID == currentUserMessageID || strings.TrimSpace(row.Content) == "" {
 			continue
 		}
 		switch row.Role {
 		case string(llm.UserRole):
-			messages = append(messages, llm.UserMessage(row.Content))
+			entries = append(entries, &corecontext.Entry{ID: row.ID.String(), Message: llm.UserMessage(row.Content)})
 		case string(llm.AssistantRole):
-			messages = append(messages, llm.AssistantMessage(row.Content))
+			entries = append(entries, &corecontext.Entry{ID: row.ID.String(), Message: llm.AssistantMessage(row.Content)})
 		}
 	}
-	return messages, nil
+	return entries, nil
+}
+
+func contextEntryMessages(entries []*corecontext.Entry) []*llm.Message {
+	messages := make([]*llm.Message, 0, len(entries))
+	for _, entry := range entries {
+		if entry != nil && entry.Message != nil {
+			messages = append(messages, entry.Message)
+		}
+	}
+	return llm.CloneMessages(messages)
 }
 
 // toolRegistry 构建可用于当前用户的工具注册表。
@@ -401,6 +456,7 @@ func toolContext(ctx context.Context, svcCtx *svc.ServiceContext, userID uuid.UU
 	return util.WithKnowledgeBaseIDs(ctx, kbIDs), kbIDs, nil
 }
 
+// composeQuery 将用户消息和附件内容组合为单条查询，附件内容按顺序附加在消息后。
 func composeQuery(message string, attachments []*types.MessageAttachment) string {
 	query := strings.TrimSpace(message)
 	if len(attachments) == 0 {

@@ -59,7 +59,7 @@ func (r *MessageRepository) ListByConversationID(ctx context.Context, userID uui
 		Joins("JOIN conversations ON messages.conversation_id = conversations.id").
 		Where("messages.conversation_id = ?", conversationID).
 		Where("conversations.user_id = ?", userID).
-		Order("messages.created_at ASC").
+		Order("messages.created_at ASC, messages.id ASC").
 		Find(&rows).Error
 	if err != nil {
 		return nil, xerr.Wrapf(err, "查询会话消息列表失败")

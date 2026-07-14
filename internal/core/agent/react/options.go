@@ -40,6 +40,17 @@ func WithPromptBuilder(builder PromptBuilder) Option {
 	}
 }
 
+// WithMessagePreparer 设置默认 planner 在每次模型调用前使用的消息规整器。
+//
+// nil 会被忽略；配置自定义 Planner 时，调用方需要在自定义实现内部使用规整器。
+func WithMessagePreparer(preparer MessagePreparer) Option {
+	return func(a *Agent) {
+		if preparer != nil {
+			a.messagePreparer = preparer
+		}
+	}
+}
+
 // WithParser 设置 ReAct 输出解析器，nil 会被忽略。
 func WithParser(parser Parser) Option {
 	return func(a *Agent) {

@@ -65,6 +65,38 @@ func (f *AgentConfigUpdateFields) HumanMode() *AgentConfigUpdateFields {
 	return f.add("human_mode")
 }
 
+func (f *AgentConfigUpdateFields) ContextEnabled() *AgentConfigUpdateFields {
+	return f.add("context_enabled")
+}
+
+func (f *AgentConfigUpdateFields) ContextWindowTokens() *AgentConfigUpdateFields {
+	return f.add("context_window_tokens")
+}
+
+func (f *AgentConfigUpdateFields) ContextOutputReserveTokens() *AgentConfigUpdateFields {
+	return f.add("context_output_reserve_tokens")
+}
+
+func (f *AgentConfigUpdateFields) ContextSafetyMarginTokens() *AgentConfigUpdateFields {
+	return f.add("context_safety_margin_tokens")
+}
+
+func (f *AgentConfigUpdateFields) ContextTriggerRatio() *AgentConfigUpdateFields {
+	return f.add("context_trigger_ratio")
+}
+
+func (f *AgentConfigUpdateFields) ContextTargetRatio() *AgentConfigUpdateFields {
+	return f.add("context_target_ratio")
+}
+
+func (f *AgentConfigUpdateFields) ContextKeepRecentTokens() *AgentConfigUpdateFields {
+	return f.add("context_keep_recent_tokens")
+}
+
+func (f *AgentConfigUpdateFields) ContextSummaryMaxTokens() *AgentConfigUpdateFields {
+	return f.add("context_summary_max_tokens")
+}
+
 func (f *AgentConfigUpdateFields) Columns() []string {
 	if f == nil || len(f.columns) == 0 {
 		return nil

@@ -10,6 +10,7 @@ func MigrationModels() []any {
 		&RefreshToken{},
 		&ModelConfig{},
 		&Conversation{},
+		&ConversationContextState{},
 		&Message{},
 		&MessageFeedback{},
 		&AgentConfig{},

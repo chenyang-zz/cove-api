@@ -1,5 +1,4 @@
-// Package channel 组装编译进 Cove 的官方消息 Provider。
-package channel
+package svc
 
 import (
 	"net/http"
@@ -10,9 +9,9 @@ import (
 	"github.com/boxify/api-go/internal/infrastructure/channel/webhook"
 )
 
-// NewRegistry 返回包含 Telegram、飞书和通用 Webhook 的注册表。
+// newChannelRegistry 在 ServiceContext 组合根注册 Cove 官方渠道 Provider。
 // client 仅用于用户配置的 Webhook 回调；Telegram 保持独立的官方 API 超时边界。
-func NewRegistry(client *http.Client) (*corechannel.Registry, error) {
+func newChannelRegistry(client *http.Client) (*corechannel.Registry, error) {
 	return corechannel.NewRegistry(corechannel.WithProviders(
 		telegram.New(nil),
 		feishu.New(),

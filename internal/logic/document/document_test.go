@@ -205,6 +205,15 @@ func (r *fakeDocumentKnowledgeBaseRepository) FindByID(ctx context.Context, user
 	return row, nil
 }
 
+func (r *fakeDocumentKnowledgeBaseRepository) SetDefault(ctx context.Context, userID uuid.UUID, knowledgeBaseID uuid.UUID) (*models.KnowledgeBase, error) {
+	row, err := r.FindByID(ctx, userID, knowledgeBaseID)
+	if err != nil {
+		return nil, err
+	}
+	row.IsDefault = true
+	return row, nil
+}
+
 func (r *fakeDocumentKnowledgeBaseRepository) Update(ctx context.Context, userID uuid.UUID, row *models.KnowledgeBase) (*models.KnowledgeBase, error) {
 	r.rows[row.ID] = row
 	return row, nil

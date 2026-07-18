@@ -5,7 +5,6 @@ import (
 	"log/slog"
 
 	"github.com/boxify/api-go/internal/mapper"
-	"github.com/boxify/api-go/internal/models"
 	"github.com/boxify/api-go/internal/observability/xlog"
 	"github.com/boxify/api-go/internal/svc"
 	"github.com/boxify/api-go/internal/transport/http/request"
@@ -13,10 +12,6 @@ import (
 	"github.com/boxify/api-go/internal/xerr"
 	"github.com/google/uuid"
 )
-
-type knowledgeBaseDefaultSetter interface {
-	SetDefault(ctx context.Context, userID uuid.UUID, knowledgeBaseID uuid.UUID) (*models.KnowledgeBase, error)
-}
 
 // SetDefaultKnowledgeBaseLogic 包含切换默认知识库用例。
 type SetDefaultKnowledgeBaseLogic struct {
@@ -43,12 +38,7 @@ func (l *SetDefaultKnowledgeBaseLogic) SetDefaultKnowledgeBase(userID uuid.UUID,
 	if l.svcCtx == nil || l.svcCtx.KnowledgeBaseRepo == nil {
 		return nil, xerr.Internal("知识库仓储未初始化", nil)
 	}
-	setter, ok := l.svcCtx.KnowledgeBaseRepo.(knowledgeBaseDefaultSetter)
-	if !ok {
-		return nil, xerr.Internal("知识库仓储不支持设置默认项", nil)
-	}
-
-	row, err := setter.SetDefault(l.ctx, userID, knowledgeBaseID)
+	row, err := l.svcCtx.KnowledgeBaseRepo.SetDefault(l.ctx, userID, knowledgeBaseID)
 	if err != nil {
 		return nil, err
 	}

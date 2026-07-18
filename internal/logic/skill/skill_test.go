@@ -560,6 +560,15 @@ func (r *fakeSkillKnowledgeBaseRepository) FindByID(ctx context.Context, userID 
 	return nil, xerr.NotFound("知识库不存在")
 }
 
+func (r *fakeSkillKnowledgeBaseRepository) SetDefault(ctx context.Context, userID uuid.UUID, kbID uuid.UUID) (*models.KnowledgeBase, error) {
+	row, err := r.FindByID(ctx, userID, kbID)
+	if err != nil {
+		return nil, err
+	}
+	row.IsDefault = true
+	return row, nil
+}
+
 func (r *fakeSkillKnowledgeBaseRepository) Update(ctx context.Context, userID uuid.UUID, row *models.KnowledgeBase) (*models.KnowledgeBase, error) {
 	return row, nil
 }

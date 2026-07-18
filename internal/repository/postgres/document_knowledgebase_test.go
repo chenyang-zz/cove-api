@@ -571,13 +571,7 @@ func TestKnowledgeBaseRepositorySetDefaultWhenPostgresEnvIsConfigured(t *testing
 		t.Fatalf("Create other default error = %v", err)
 	}
 
-	setter, ok := kbRepo.(interface {
-		SetDefault(context.Context, uuid.UUID, uuid.UUID) (*models.KnowledgeBase, error)
-	})
-	if !ok {
-		t.Fatal("KnowledgeBaseRepository does not implement SetDefault")
-	}
-	selected, err := setter.SetDefault(ctx, user.ID, target.ID)
+	selected, err := kbRepo.SetDefault(ctx, user.ID, target.ID)
 	if err != nil {
 		t.Fatalf("SetDefault error = %v", err)
 	}

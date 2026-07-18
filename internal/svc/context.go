@@ -18,7 +18,6 @@ import (
 	ragsearch "github.com/boxify/api-go/internal/core/rag/search"
 	"github.com/boxify/api-go/internal/core/rag/webcrawl"
 	domainskills "github.com/boxify/api-go/internal/domain/skills"
-	infrastructurechannel "github.com/boxify/api-go/internal/infrastructure/channel"
 	infraes "github.com/boxify/api-go/internal/infrastructure/db/es"
 	dbneo4j "github.com/boxify/api-go/internal/infrastructure/db/neo4j"
 	dbpostgres "github.com/boxify/api-go/internal/infrastructure/db/postgres"
@@ -119,7 +118,7 @@ func New(ctx context.Context, cfg config.Config) (*ServiceContext, error) {
 	if parsed, parseErr := time.ParseDuration(cfg.Gateway.CallbackTimeout); parseErr == nil && parsed > 0 {
 		callbackTimeout = parsed
 	}
-	channelRegistry, err := infrastructurechannel.NewRegistry(&http.Client{Timeout: callbackTimeout})
+	channelRegistry, err := newChannelRegistry(&http.Client{Timeout: callbackTimeout})
 	if err != nil {
 		return nil, xerr.Wrapf(err, "创建渠道注册表失败")
 	}

@@ -185,6 +185,15 @@ func (r *fakeImageKnowledgeBaseRepository) FindByID(ctx context.Context, userID 
 	return row, nil
 }
 
+func (r *fakeImageKnowledgeBaseRepository) SetDefault(ctx context.Context, userID uuid.UUID, knowledgeBaseID uuid.UUID) (*models.KnowledgeBase, error) {
+	row, err := r.FindByID(ctx, userID, knowledgeBaseID)
+	if err != nil {
+		return nil, err
+	}
+	row.IsDefault = true
+	return row, nil
+}
+
 func (r *fakeImageKnowledgeBaseRepository) Update(ctx context.Context, userID uuid.UUID, row *models.KnowledgeBase) (*models.KnowledgeBase, error) {
 	r.rows[row.ID] = row
 	return row, nil

@@ -323,6 +323,15 @@ func (r *fakeKnowledgeToolKBRepo) FindByID(ctx context.Context, userID uuid.UUID
 	return row, nil
 }
 
+func (r *fakeKnowledgeToolKBRepo) SetDefault(ctx context.Context, userID uuid.UUID, knowledgeBaseID uuid.UUID) (*models.KnowledgeBase, error) {
+	row, err := r.FindByID(ctx, userID, knowledgeBaseID)
+	if err != nil {
+		return nil, err
+	}
+	row.IsDefault = true
+	return row, nil
+}
+
 func (r *fakeKnowledgeToolKBRepo) Update(ctx context.Context, userID uuid.UUID, row *models.KnowledgeBase) (*models.KnowledgeBase, error) {
 	return row, nil
 }

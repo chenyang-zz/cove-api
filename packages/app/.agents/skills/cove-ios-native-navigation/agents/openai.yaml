@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cove iOS Native Navigation"
+  short_description: "Implement Cove Expo Router and legacy UIKit navigation"
+  default_prompt: "Use $cove-ios-native-navigation to implement or debug Cove native page transitions with the current Expo Router stack or the explicitly requested legacy UIKit stack."

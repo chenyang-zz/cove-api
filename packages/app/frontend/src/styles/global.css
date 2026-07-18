@@ -1,0 +1,215 @@
+:root {
+  font-family: "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont,
+    "SF Pro Text", "Segoe UI", sans-serif;
+  color: #10272c;
+  background: #f1f8f8;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  color-scheme: light dark;
+
+  --page: #f1f8f8;
+  --surface: #fbfefe;
+  --surface-muted: #e0eff0;
+  --input: #f6fbfb;
+  --text: #10272c;
+  --text-muted: #4f6a70;
+  --text-soft: #6b8589;
+  --border: #c8dfe0;
+  --border-strong: #97b9bc;
+  --accent: #177d81;
+  --accent-hover: #0f646a;
+  --accent-text: #f3ffff;
+  --danger: #ae3934;
+  --danger-surface: #fceceb;
+  --danger-border: #efbbb7;
+  --focus: rgba(23, 125, 129, 0.24);
+  --shadow: 0 28px 80px rgba(30, 90, 100, 0.13);
+  --radius-panel: 28px;
+  --radius-control: 15px;
+  --radius-field: 12px;
+  --field-border: var(--border-strong);
+  --field-background: var(--input);
+  --field-focus-background: var(--input);
+  --field-focus-shadow: inset 0 0 0 1px var(--accent);
+  --field-error-shadow: inset 0 0 0 1px var(--danger);
+  --field-transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100%;
+  background: var(--page);
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+}
+
+body {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--page);
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+}
+
+html.chat-document,
+html.chat-document body,
+html.chat-document #root {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+input,
+textarea,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+input {
+  border-radius: var(--radius-control);
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.auth-shell,
+.app-shell,
+.launch-screen {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  min-width: 0;
+  background: var(--page);
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+  touch-action: pan-y pinch-zoom;
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.brand-lockup__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  object-fit: cover;
+  box-shadow: 0 5px 16px rgba(23, 75, 62, 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #e8f8f8;
+    background: #0b2027;
+    --page: #0b2027;
+    --surface: #112c34;
+    --surface-muted: #193c45;
+    --input: #0e252c;
+    --text: #e8f8f8;
+    --text-muted: #adcbcd;
+    --text-soft: #89aeb2;
+    --border: #31545c;
+    --border-strong: #50737a;
+    --accent: #67d2cc;
+    --accent-hover: #8be3dc;
+    --accent-text: #092329;
+    --danger: #ffb2ad;
+    --danger-surface: #3b2527;
+    --danger-border: #78464a;
+    --focus: rgba(103, 210, 204, 0.3);
+    --shadow: 0 30px 84px rgba(2, 14, 18, 0.48);
+  }
+
+  .brand-lockup__icon {
+    box-shadow: 0 8px 24px rgba(5, 17, 13, 0.44);
+  }
+}
+
+@media (min-width: 561px) {
+  .auth-shell,
+  .app-shell,
+  .launch-screen {
+    padding: 24px;
+  }
+}
+
+@media (max-width: 560px) {
+  .auth-shell,
+  .app-shell,
+  .launch-screen {
+    padding-top: calc(env(safe-area-inset-top) + 12px);
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-bottom: calc(env(safe-area-inset-bottom) + 12px);
+    padding-left: max(20px, env(safe-area-inset-left));
+  }
+
+  .auth-shell,
+  .app-shell {
+    display: block;
+  }
+}
+
+@media (max-width: 350px) {
+  .auth-shell,
+  .app-shell {
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-left: max(16px, env(safe-area-inset-left));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

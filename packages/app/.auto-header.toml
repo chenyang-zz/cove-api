@@ -1,0 +1,13 @@
+[author]
+name = "chenyang"
+email = "chenyangzhao542@gmail.com"
+
+[project]
+name = "Cove"
+
+[header]
+template = """
+@Time   : {date} {time}
+@Author : {author}
+@File   : {filename}
+"""

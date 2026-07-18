@@ -1,0 +1,5 @@
+{
+  "Replace": {
+    "/Users/sheepzhao/WorkSpace/agent/boxify/cove/main_ios.gen.go": "/Users/sheepzhao/WorkSpace/agent/boxify/cove/build/ios/xcode/gen/main_ios.gen.go"
+  }
+}

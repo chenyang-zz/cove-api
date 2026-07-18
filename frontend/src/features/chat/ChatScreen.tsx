@@ -56,7 +56,8 @@ const maxAttachmentCount = 3
 const maxAttachmentBytes = 1024 * 1024
 const conversationPageSize = 20
 const messagePageSize = 30
-const paginationThreshold = 48
+const nearBottomThreshold = 48
+const historyPrefetchThreshold = 160
 const conversationMenuWidth = 136
 const conversationMenuHeight = 92
 const conversationMenuGap = 6
@@ -247,7 +248,7 @@ function messageTimeline(message: ChatMessage): TimelineItem[] {
 function MarkdownContent({ text }: { text: string }) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkEmojiFallback]}
+      remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkEmojiFallback]}
       skipHtml
       components={{
         a: ({ href, children }) => (
@@ -339,12 +340,53 @@ function prependUniqueById<T extends { id: string }>(items: T[], incoming: T[]) 
 }
 
 type ScrollAnchor = {
+  conversationId: string
+  generation: number
+  element: HTMLElement | null
+  offsetTop: number
   scrollHeight: number
   scrollTop: number
 }
 
 function isNearBottom(element: HTMLElement) {
-  return element.scrollHeight - element.scrollTop - element.clientHeight <= paginationThreshold
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= nearBottomThreshold
+}
+
+function captureVisibleMessageAnchor(
+  scroll: HTMLElement,
+  conversationId: string,
+  generation: number,
+): ScrollAnchor {
+  const scrollBounds = scroll.getBoundingClientRect()
+  const element = Array.from(scroll.querySelectorAll<HTMLElement>('[data-message-id]')).find((candidate) => {
+    const bounds = candidate.getBoundingClientRect()
+    return bounds.bottom > scrollBounds.top && bounds.top < scrollBounds.bottom
+  }) ?? null
+
+  return {
+    conversationId,
+    generation,
+    element,
+    offsetTop: element ? element.getBoundingClientRect().top - scrollBounds.top : 0,
+    scrollHeight: scroll.scrollHeight,
+    scrollTop: scroll.scrollTop,
+  }
+}
+
+function restoreVisibleMessageAnchor(scroll: HTMLElement, anchor: ScrollAnchor) {
+  if (anchor.element?.isConnected && scroll.contains(anchor.element)) {
+    const currentOffset = anchor.element.getBoundingClientRect().top - scroll.getBoundingClientRect().top
+    const offsetChange = currentOffset - anchor.offsetTop
+    if (Number.isFinite(offsetChange) && Math.abs(offsetChange) > 0.5) {
+      scroll.scrollTop += offsetChange
+    }
+    return
+  }
+
+  const heightChange = scroll.scrollHeight - anchor.scrollHeight
+  if (Number.isFinite(heightChange) && heightChange !== 0) {
+    scroll.scrollTop = anchor.scrollTop + heightChange
+  }
 }
 
 function scrollToBottom(element: HTMLElement, behavior: ScrollBehavior = 'auto') {
@@ -410,6 +452,11 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
   const menuConversation = conversations.find((item) => item.id === conversationMenuId)
   const isEmptyConversation = messageState === 'ready' && messages.length === 0
 
+  const releaseMessagePagination = useCallback(() => {
+    messageLoadingMoreRef.current = false
+    setMessageLoadingMore(false)
+  }, [])
+
   const loadConversations = useCallback(async (selectFirst = false) => {
     setConversationState('loading')
     setConversationError('')
@@ -469,12 +516,12 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
   const loadHistory = useCallback(async (conversationId: string) => {
     const generation = ++historyGenerationRef.current
     initialMessageScrollRef.current = false
+    messageAnchorRef.current = null
     setMessageState('loading')
     setMessageError('')
     setMessageMoreError('')
     setMessageHasMore(false)
-    setMessageLoadingMore(false)
-    messageLoadingMoreRef.current = false
+    releaseMessagePagination()
     try {
       const response = await listMessages(conversationId, { limit: messagePageSize })
       if (generation !== historyGenerationRef.current || selectedIdRef.current !== conversationId) {
@@ -491,7 +538,7 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
       setMessageState('error')
       setMessageError(error instanceof Error ? error.message : '消息加载失败。')
     }
-  }, [])
+  }, [releaseMessagePagination])
 
   const loadOlderHistory = useCallback(async () => {
     const conversationId = selectedId
@@ -512,7 +559,7 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
     messageLoadingMoreRef.current = true
     setMessageLoadingMore(true)
     setMessageMoreError('')
-    const anchor = { scrollHeight: scroll.scrollHeight, scrollTop: scroll.scrollTop }
+    let awaitingAnchorRestore = false
     try {
       const response = await listMessages(conversationId, {
         limit: messagePageSize,
@@ -521,20 +568,24 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
       if (generation !== historyGenerationRef.current || selectedIdRef.current !== conversationId) {
         return
       }
-      messageAnchorRef.current = anchor
-      setMessages((current) => prependUniqueById(current, response.list))
       setMessageHasMore(response.has_more)
+      const existingIds = new Set(messages.map((message) => message.id))
+      if (!response.list.some((message) => !existingIds.has(message.id))) {
+        return
+      }
+      messageAnchorRef.current = captureVisibleMessageAnchor(scroll, conversationId, generation)
+      awaitingAnchorRestore = true
+      setMessages((current) => prependUniqueById(current, response.list))
     } catch (error: unknown) {
       if (generation === historyGenerationRef.current && selectedIdRef.current === conversationId) {
         setMessageMoreError(error instanceof Error ? error.message : '更早消息加载失败。')
       }
     } finally {
-      if (generation === historyGenerationRef.current) {
-        messageLoadingMoreRef.current = false
-        setMessageLoadingMore(false)
+      if (generation === historyGenerationRef.current && !awaitingAnchorRestore) {
+        releaseMessagePagination()
       }
     }
-  }, [messageHasMore, messageState, messages, selectedId])
+  }, [messageHasMore, messageState, messages, releaseMessagePagination, selectedId])
 
   const loadKnowledgeConfig = useCallback(async () => {
     setKnowledgeState('loading')
@@ -555,6 +606,8 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
   }, [loadConversations, loadKnowledgeConfig])
 
   useEffect(() => {
+    messageAnchorRef.current = null
+    releaseMessagePagination()
     if (!selectedId) {
       selectedIdRef.current = null
       historyGenerationRef.current += 1
@@ -572,7 +625,7 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
       return
     }
     void loadHistory(selectedId)
-  }, [loadHistory, selectedId])
+  }, [loadHistory, releaseMessagePagination, selectedId])
 
   useLayoutEffect(() => {
     hasMessagesRef.current = messages.length > 0
@@ -583,7 +636,13 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
     if (messageAnchorRef.current) {
       const anchor = messageAnchorRef.current
       messageAnchorRef.current = null
-      messageScroll.scrollTop = anchor.scrollTop + (messageScroll.scrollHeight - anchor.scrollHeight)
+      if (
+        anchor.conversationId === selectedIdRef.current &&
+        anchor.generation === historyGenerationRef.current
+      ) {
+        restoreVisibleMessageAnchor(messageScroll, anchor)
+      }
+      releaseMessagePagination()
       return
     }
     if (initialMessageScrollRef.current) {
@@ -595,11 +654,13 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
     if (autoFollowRef.current) {
       scrollToBottom(messageScroll, streamState.status === 'streaming' ? 'auto' : 'smooth')
     }
-  }, [messages, streamState.status])
+  }, [messages, releaseMessagePagination, streamState.status])
 
   useEffect(() => {
     return () => {
       abortRef.current?.abort()
+      messageAnchorRef.current = null
+      messageLoadingMoreRef.current = false
       if (keyboardPreparationTimerRef.current !== null) {
         window.clearTimeout(keyboardPreparationTimerRef.current)
       }
@@ -1171,7 +1232,7 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
   function handleMessageScroll(event: ReactUIEvent<HTMLDivElement>) {
     const element = event.currentTarget
     autoFollowRef.current = isNearBottom(element)
-    if (element.scrollTop <= paginationThreshold) {
+    if (element.scrollTop <= historyPrefetchThreshold && !messageMoreError) {
       void loadOlderHistory()
     }
   }
@@ -1398,18 +1459,17 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
         <div
           className={isEmptyConversation ? 'message-scroll message-scroll--empty' : 'message-scroll'}
           ref={messageScrollRef}
-          aria-busy={messageState === 'loading'}
+          aria-busy={messageState === 'loading' || messageLoadingMore}
           onScroll={handleMessageScroll}
         >
           <div className="message-column" role="log" aria-live="polite" aria-relevant="additions text">
             <div className="message-history-sentinel" aria-hidden="true" />
-            {messageLoadingMore && (
-              <p className="pagination-status message-history-status" role="status">正在加载更早消息…</p>
-            )}
             {messageMoreError && (
-              <div className="pagination-error message-history-error" role="alert">
-                <span>{messageMoreError}</span>
-                <button type="button" onClick={() => void loadOlderHistory()}>重试</button>
+              <div className="message-history-overlay">
+                <div className="pagination-error message-history-error" role="alert">
+                  <span>{messageMoreError}</span>
+                  <button type="button" onClick={() => void loadOlderHistory()}>重试</button>
+                </div>
               </div>
             )}
             {messageState === 'loading' && (
@@ -1446,7 +1506,7 @@ export function ChatScreen({ session, onLogout, onOpenProfile, focusRequest = 0 
               </div>
             )}
             {messageState === 'ready' && messages.map((message) => (
-              <article className={`message message--${message.role}`} key={message.id}>
+              <article className={`message message--${message.role}`} data-message-id={message.id} key={message.id}>
                 {message.role === 'assistant' && (
                   <img className="message__avatar" src={coveIcon} alt="Cove" />
                 )}

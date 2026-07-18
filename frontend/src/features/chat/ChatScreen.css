@@ -494,8 +494,21 @@
   cursor: pointer;
 }
 
-.message-history-status,
-.message-history-error { margin: 0 0 18px 38px; }
+.message-history-overlay {
+  position: sticky;
+  top: 8px;
+  z-index: 4;
+  display: flex;
+  height: 0;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.message-history-error {
+  width: min(420px, calc(100% - 56px));
+  margin: 0 0 0 38px;
+  pointer-events: auto;
+}
 
 .message-skeleton {
   display: grid;

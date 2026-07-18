@@ -64,6 +64,20 @@ function message(id: string, content: string, role = 'assistant') {
   }
 }
 
+function rect(top: number, bottom: number): DOMRect {
+  return {
+    x: 0,
+    y: top,
+    width: 390,
+    height: bottom - top,
+    top,
+    right: 390,
+    bottom,
+    left: 0,
+    toJSON: () => ({}),
+  }
+}
+
 beforeEach(() => {
   vi.restoreAllMocks()
   sessionStorage.clear()
@@ -663,12 +677,17 @@ describe('ChatScreen', () => {
     render(<ChatScreen session={session} onLogout={vi.fn()} />)
     await screen.findByText('第三条')
     const scroll = document.querySelector('.message-scroll') as HTMLDivElement
+    const visibleMessage = document.querySelector<HTMLElement>('[data-message-id="message-2"]') as HTMLElement
     let scrollHeight = 600
     Object.defineProperties(scroll, {
       scrollHeight: { configurable: true, get: () => scrollHeight },
       clientHeight: { configurable: true, value: 240 },
-      scrollTop: { configurable: true, writable: true, value: 20 },
+      scrollTop: { configurable: true, writable: true, value: 140 },
     })
+    scroll.getBoundingClientRect = () => rect(100, 340)
+    visibleMessage.getBoundingClientRect = () => (
+      document.querySelector('[data-message-id="message-1"]') ? rect(385, 435) : rect(85, 135)
+    )
 
     fireEvent.scroll(scroll)
     await waitFor(() => {
@@ -677,6 +696,13 @@ describe('ChatScreen', () => {
         before: 'message-2',
       })
     })
+    expect(scroll.getAttribute('aria-busy')).toBe('true')
+    expect(screen.queryByText('正在加载更早消息…')).toBeNull()
+
+    scroll.scrollTop = 45
+    fireEvent.scroll(scroll)
+    expect(mocks.listMessages).toHaveBeenCalledTimes(2)
+
     scrollHeight = 900
     act(() => resolveOlder?.({
       list: [message('message-1', '第一条'), message('message-2', '第二条')],
@@ -685,7 +711,174 @@ describe('ChatScreen', () => {
 
     expect(await screen.findByText('第一条')).toBeTruthy()
     expect(screen.getAllByText('第二条')).toHaveLength(1)
-    expect(scroll.scrollTop).toBe(320)
+    expect(scroll.scrollTop).toBe(345)
+    expect(scroll.getAttribute('aria-busy')).toBe('false')
+  })
+
+  it('does not double-adjust history when the browser already preserved the visible message', async () => {
+    let resolveOlder: ((value: { list: ReturnType<typeof message>[]; has_more: boolean }) => void) | undefined
+    mocks.listConversations.mockResolvedValue({
+      list: [conversation('conversation-1', '历史记录')],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    })
+    mocks.listMessages
+      .mockReset()
+      .mockResolvedValueOnce({
+        list: [message('message-2', '第二条'), message('message-3', '第三条')],
+        has_more: true,
+      })
+      .mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveOlder = resolve
+        }),
+      )
+
+    render(<ChatScreen session={session} onLogout={vi.fn()} />)
+    await screen.findByText('第三条')
+    const scroll = document.querySelector('.message-scroll') as HTMLDivElement
+    const visibleMessage = document.querySelector<HTMLElement>('[data-message-id="message-2"]') as HTMLElement
+    Object.defineProperties(scroll, {
+      scrollHeight: { configurable: true, value: 900 },
+      clientHeight: { configurable: true, value: 240 },
+      scrollTop: { configurable: true, writable: true, value: 80 },
+    })
+    scroll.getBoundingClientRect = () => rect(100, 340)
+    visibleMessage.getBoundingClientRect = () => rect(120, 170)
+
+    fireEvent.scroll(scroll)
+    await waitFor(() => expect(mocks.listMessages).toHaveBeenCalledTimes(2))
+    act(() => resolveOlder?.({ list: [message('message-1', '第一条')], has_more: false }))
+
+    expect(await screen.findByText('第一条')).toBeTruthy()
+    expect(scroll.scrollTop).toBe(80)
+  })
+
+  it('falls back to the scroll height delta when no visible message anchor is available', async () => {
+    let resolveOlder: ((value: { list: ReturnType<typeof message>[]; has_more: boolean }) => void) | undefined
+    mocks.listConversations.mockResolvedValue({
+      list: [conversation('conversation-1', '历史记录')],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    })
+    mocks.listMessages
+      .mockReset()
+      .mockResolvedValueOnce({ list: [message('message-2', '第二条')], has_more: true })
+      .mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveOlder = resolve
+        }),
+      )
+
+    render(<ChatScreen session={session} onLogout={vi.fn()} />)
+    await screen.findByText('第二条')
+    const scroll = document.querySelector('.message-scroll') as HTMLDivElement
+    Object.defineProperties(scroll, {
+      scrollHeight: {
+        configurable: true,
+        get: () => screen.queryByText('第一条') ? 900 : 600,
+      },
+      clientHeight: { configurable: true, value: 240 },
+      scrollTop: { configurable: true, writable: true, value: 30 },
+    })
+    scroll.getBoundingClientRect = () => rect(100, 340)
+
+    fireEvent.scroll(scroll)
+    await waitFor(() => expect(mocks.listMessages).toHaveBeenCalledTimes(2))
+    act(() => resolveOlder?.({ list: [message('message-1', '第一条')], has_more: false }))
+
+    expect(await screen.findByText('第一条')).toBeTruthy()
+    expect(scroll.scrollTop).toBe(330)
+  })
+
+  it('shows history load failures in a non-layout overlay without replacing messages', async () => {
+    let rejectOlder: ((error: Error) => void) | undefined
+    mocks.listConversations.mockResolvedValue({
+      list: [conversation('conversation-1', '历史记录')],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    })
+    mocks.listMessages
+      .mockReset()
+      .mockResolvedValueOnce({ list: [message('message-2', '仍然可见')], has_more: true })
+      .mockImplementationOnce(
+        () => new Promise((_resolve, reject) => {
+          rejectOlder = reject
+        }),
+      )
+
+    render(<ChatScreen session={session} onLogout={vi.fn()} />)
+    await screen.findByText('仍然可见')
+    const scroll = document.querySelector('.message-scroll') as HTMLDivElement
+    Object.defineProperties(scroll, {
+      scrollHeight: { configurable: true, value: 600 },
+      clientHeight: { configurable: true, value: 240 },
+      scrollTop: { configurable: true, writable: true, value: 30 },
+    })
+
+    fireEvent.scroll(scroll)
+    await waitFor(() => expect(mocks.listMessages).toHaveBeenCalledTimes(2))
+    expect(screen.queryByText('正在加载更早消息…')).toBeNull()
+    act(() => rejectOlder?.(new Error('历史加载失败')))
+
+    const error = await screen.findByRole('alert')
+    expect(error.textContent).toContain('历史加载失败')
+    expect(error.closest('.message-history-overlay')).toBeTruthy()
+    expect(screen.getByText('仍然可见')).toBeTruthy()
+    expect(scroll.getAttribute('aria-busy')).toBe('false')
+    fireEvent.scroll(scroll)
+    expect(mocks.listMessages).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores an older-history response after switching conversations', async () => {
+    const user = userEvent.setup()
+    let resolveOlder: ((value: { list: ReturnType<typeof message>[]; has_more: boolean }) => void) | undefined
+    mocks.listConversations.mockResolvedValue({
+      list: [
+        conversation('conversation-1', '第一会话'),
+        conversation('conversation-2', '第二会话', '2026-07-10T07:00:00Z'),
+      ],
+      total: 2,
+      page: 1,
+      page_size: 20,
+    })
+    mocks.listMessages.mockImplementation((conversationId: string, options?: { before?: string }) => {
+      if (conversationId === 'conversation-2') {
+        return Promise.resolve({ list: [message('message-new', '第二会话内容')], has_more: false })
+      }
+      if (options?.before) {
+        return new Promise((resolve) => {
+          resolveOlder = resolve
+        })
+      }
+      return Promise.resolve({ list: [message('message-2', '第一会话内容')], has_more: true })
+    })
+
+    render(<ChatScreen session={session} onLogout={vi.fn()} />)
+    await screen.findByText('第一会话内容')
+    const scroll = document.querySelector('.message-scroll') as HTMLDivElement
+    Object.defineProperties(scroll, {
+      scrollHeight: { configurable: true, value: 600 },
+      clientHeight: { configurable: true, value: 240 },
+      scrollTop: { configurable: true, writable: true, value: 30 },
+    })
+
+    fireEvent.scroll(scroll)
+    await waitFor(() => expect(resolveOlder).toBeTypeOf('function'))
+    await user.click(screen.getByRole('button', { name: '打开会话列表' }))
+    const secondConversation = screen.getByText('第二会话', { selector: '.conversation-row__select span' })
+    await user.click(secondConversation.closest('button') as HTMLButtonElement)
+    expect(await screen.findByText('第二会话内容')).toBeTruthy()
+
+    act(() => resolveOlder?.({ list: [message('message-1', '不应出现的旧消息')], has_more: false }))
+    await act(async () => Promise.resolve())
+
+    expect(screen.queryByText('不应出现的旧消息')).toBeNull()
+    expect(screen.getByText('第二会话内容')).toBeTruthy()
+    expect(scroll.getAttribute('aria-busy')).toBe('false')
   })
 
   it('renders ordered historical message parts and compact tool states', async () => {
@@ -760,6 +953,27 @@ describe('ChatScreen', () => {
 
     expect(await screen.findByText('实际 Markdown 内容')).toHaveProperty('tagName', 'STRONG')
     expect(screen.queryByLabelText('Cove 正在思考')).toBeNull()
+  })
+
+  it('keeps playful single tildes as text while preserving standard strikethrough', async () => {
+    mocks.listConversations.mockResolvedValue({
+      list: [conversation('conversation-1', '波浪号渲染')],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    })
+    mocks.listMessages.mockResolvedValue({
+      list: [message('message-1', '嘻嘻~主人很好~，但~~这句删除~~。')],
+      has_more: false,
+    })
+
+    render(<ChatScreen session={session} onLogout={vi.fn()} />)
+
+    const deleted = await screen.findByText('这句删除')
+    expect(deleted).toHaveProperty('tagName', 'DEL')
+    const log = screen.getByRole('log')
+    expect(log.textContent).toContain('嘻嘻~主人很好~，但这句删除。')
+    expect(log.querySelectorAll('del')).toHaveLength(1)
   })
 
   it('replaces unsupported Markdown emoji without changing code content', async () => {

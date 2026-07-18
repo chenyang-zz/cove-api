@@ -23,3 +23,4 @@ Before working, read [.codex/rules/architecture.md](.codex/rules/architecture.md
 - A backend requirement is not complete until its real scenario has passed against a local real database after applying the real migration path; fake repositories and `httptest` alone are insufficient completion evidence.
 - Cross-frontend/backend E2E acceptance must use an isolated local database managed by the workspace OrbStack workflow. Never point it at a remote, production, staging, or developer-owned database.
 - Report validation results separately for app and server changes, followed by cross-package E2E results when applicable.
+- Release tags (`vX.Y.Z`) must be created only after the release commit is on `main`. Never tag or push a production version from `dev` or a feature branch. Order: merge to `main` → tag that commit → push the tag. Local pre-push and CD both enforce this.

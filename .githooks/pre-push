@@ -1,15 +1,85 @@
 #!/usr/bin/env bash
 #
-# pre-push hook: 推送前运行与 Cove CI 一致的本地校验。
-# 跳过方式：GIT_PUSH_VERIFY=false git push
+# pre-push hook: 推送前运行与 Cove CI 一致的本地校验，并强制发版规则。
+#
+# 发版 tag 规则（不可用 GIT_PUSH_VERIFY=false 跳过）：
+#   推送 vX.Y.Z 时，tag 指向的提交必须已经在 main 历史上。
+#   流程：先合并到 main → 再在该提交上打 tag → 再 push tag。
+#   紧急绕过（仅本地，CD 仍会拒绝）：GIT_PUSH_ALLOW_OFF_MAIN_TAG=true
+#
+# 校验跳过方式：GIT_PUSH_VERIFY=false git push
 set -euo pipefail
 
+ROOT=$(git rev-parse --show-toplevel)
+zero=0000000000000000000000000000000000000000
+
+# ---------------------------------------------------------------------------
+# 1) 发版 tag 必须先合入 main（始终执行，与本地 CI 校验开关无关）
+# ---------------------------------------------------------------------------
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # 删除远端 tag：不校验
+  if [ "$local_sha" = "$zero" ]; then
+    continue
+  fi
+
+  case "$local_ref" in
+    refs/tags/*) ;;
+    *) continue ;;
+  esac
+
+  tag_name="${local_ref#refs/tags/}"
+  # 仅约束 CD 识别的语义化发版 tag：vX.Y.Z
+  if ! [[ "${tag_name}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    continue
+  fi
+
+  if [ "${GIT_PUSH_ALLOW_OFF_MAIN_TAG:-}" = "true" ]; then
+    echo "[pre-push] 警告: 允许推送未合入 main 的发版 tag ${tag_name} (GIT_PUSH_ALLOW_OFF_MAIN_TAG=true)" >&2
+    echo "[pre-push] CD 仍会拒绝未在 main 上的发版 tag。" >&2
+    continue
+  fi
+
+  # 尽量刷新 origin/main，避免本地 remote-tracking 过期导致误判
+  if git rev-parse --verify -q refs/remotes/origin/main >/dev/null 2>&1 \
+    || git ls-remote --exit-code --heads origin main >/dev/null 2>&1; then
+    git fetch --quiet origin main 2>/dev/null || true
+  fi
+
+  main_ref=""
+  if git rev-parse --verify -q refs/remotes/origin/main >/dev/null 2>&1; then
+    main_ref=refs/remotes/origin/main
+  elif git rev-parse --verify -q refs/heads/main >/dev/null 2>&1; then
+    main_ref=refs/heads/main
+  else
+    echo "[pre-push] 拒绝推送发版 tag ${tag_name}: 无法解析 main 分支。" >&2
+    echo "  请先 fetch origin main，或在本地存在 main 后再推送。" >&2
+    exit 1
+  fi
+
+  if ! git merge-base --is-ancestor "${local_sha}" "${main_ref}"; then
+    echo "[pre-push] 拒绝推送发版 tag ${tag_name}" >&2
+    echo "  规则: vX.Y.Z 必须指向已在 main 历史上的提交（先合并到 main 再发版）。" >&2
+    echo "  正确流程:" >&2
+    echo "    1. 将变更合并进 main" >&2
+    echo "    2. git checkout main && git pull" >&2
+    echo "    3. git tag vX.Y.Z" >&2
+    echo "    4. git push origin vX.Y.Z" >&2
+    echo "  tag 提交: ${local_sha}" >&2
+    echo "  main 顶端: $(git rev-parse "${main_ref}") (${main_ref})" >&2
+    exit 1
+  fi
+
+  echo "[pre-push] 发版 tag ${tag_name} -> $(git rev-parse --short "${local_sha}") 已在 main 历史中。"
+done
+
+# ---------------------------------------------------------------------------
+# 2) 本地 monorepo 校验（可跳过）
+# ---------------------------------------------------------------------------
 if [ "${GIT_PUSH_VERIFY:-}" = "false" ]; then
   echo "[pre-push] 跳过校验 (GIT_PUSH_VERIFY=false)"
   exit 0
 fi
 
-ROOT=$(git rev-parse --show-toplevel)
 SERVER_DIR="$ROOT/packages/server"
 APP_DIR="$ROOT/packages/app"
 FRONTEND_DIR="$APP_DIR/frontend"

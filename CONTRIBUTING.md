@@ -78,6 +78,35 @@ make worker
 - 添加 max_iterations 保护防止无限循环
 ```
 
+## 发版（Release Tag）
+
+生产发版由语义化版本 tag 驱动（触发 CD），格式固定为 `vX.Y.Z`（例如 `v1.2.3`）。
+
+**硬性规则：必须先合并到 `main`，再打 tag 发布。** 不允许从 `dev` 或特性分支直接推送发版 tag。
+
+正确流程：
+
+```bash
+# 1. 变更已通过 PR 合入 main
+git checkout main
+git pull origin main
+
+# 2. 在 main 上的目标提交打 tag
+git tag vX.Y.Z
+
+# 3. 推送 tag（触发 CD）
+git push origin vX.Y.Z
+```
+
+校验位置：
+
+| 层级 | 行为 |
+|---|---|
+| 本地 `.githooks/pre-push` | 推送 `vX.Y.Z` 时检查 tag 提交是否已在 `main` 历史中；`GIT_PUSH_VERIFY=false` **不能**跳过此规则 |
+| GitHub Actions CD `release-guard` | 远端再次校验；未合入 `main` 的 tag 直接失败，不构建、不部署 |
+
+本地紧急绕过（仅调试用，CD 仍会拒绝）：`GIT_PUSH_ALLOW_OFF_MAIN_TAG=true git push origin vX.Y.Z`。
+
 ## Pull Request 清单
 
 在开启 PR 前，请确认：

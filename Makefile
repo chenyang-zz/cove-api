@@ -48,7 +48,8 @@ install-hooks:
 	git -C "$(WORKSPACE_ROOT)" config core.hooksPath .githooks
 	@echo "Cove git hooks 已激活：hooksPath → .githooks"
 	@echo "现在每次 push 前都会自动运行本地 CI 校验，避免流水线失败。"
-	@echo "跳过方式：GIT_PUSH_VERIFY=false git push"
+	@echo "发版规则：vX.Y.Z 必须先合入 main 再打 tag 推送（pre-push + CD 均强制）。"
+	@echo "跳过校验：GIT_PUSH_VERIFY=false git push（不能跳过发版 tag 的 main 检查）"
 
 # App targets delegate to the existing Taskfile and package scripts.
 app-dev:

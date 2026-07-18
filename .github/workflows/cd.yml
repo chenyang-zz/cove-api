@@ -1,6 +1,7 @@
 name: Cove CD
 
 # 仅在推送语义化版本 tag 时进入 CD；生产发版由人工/流程打 tag 驱动，而非 main 每次 push。
+# 发版规则：vX.Y.Z 必须指向已合入 main 的提交（先 merge 到 main，再打 tag 推送）。
 on:
   push:
     tags:
@@ -23,9 +24,49 @@ env:
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
+  # 发版 tag 必须落在 main 历史上；未合入 main 的 tag 直接失败，避免误发生产。
+  release-guard:
+    name: Release Guard (tag on main)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require version tag commit is already on main
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unsupported tag format: $tag (expect vX.Y.Z)"
+            exit 1
+          fi
+
+          git fetch --no-tags origin main
+          if ! git rev-parse --verify -q origin/main >/dev/null; then
+            echo "::error::origin/main is missing; cannot validate release tag $tag"
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Release tag $tag points to $GITHUB_SHA, which is not on main."
+            echo "Rule: merge into main first, then create and push the vX.Y.Z tag from that commit."
+            echo "main tip: $(git rev-parse origin/main)"
+            exit 1
+          fi
+
+          echo "OK: $tag ($GITHUB_SHA) is an ancestor of origin/main ($(git rev-parse --short origin/main))."
+
+      - name: Skip tag-on-main check for manual dispatch
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: echo "Manual dispatch without version tag; release-guard passes."
+
   # 只有质量门禁通过的提交才允许发布生产镜像。
   ci-gate:
     name: CI Quality Gate
+    needs: release-guard
     uses: ./.github/workflows/ci.yml
 
   prepare-version:

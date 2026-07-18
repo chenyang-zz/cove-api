@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **cove-frontend** (764 symbols, 1474 relationships, 65 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **cove** (474551 symbols, 686596 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -24,10 +24,10 @@ This project is indexed by GitNexus as **cove-frontend** (764 symbols, 1474 rela
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/cove-frontend/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/cove-frontend/clusters` | All functional areas |
-| `gitnexus://repo/cove-frontend/processes` | All execution flows |
-| `gitnexus://repo/cove-frontend/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/cove/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/cove/clusters` | All functional areas |
+| `gitnexus://repo/cove/processes` | All execution flows |
+| `gitnexus://repo/cove/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 

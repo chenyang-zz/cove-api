@@ -8,3 +8,4 @@ frontend/package-lock.json
 frontend/.env*.local
 build/linux/appimage/build
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+.gitnexus

@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **cove-frontend** (764 symbols, 1474 relationships, 65 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **cove** (474551 symbols, 686596 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -24,10 +24,10 @@ This project is indexed by GitNexus as **cove-frontend** (764 symbols, 1474 rela
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/cove-frontend/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/cove-frontend/clusters` | All functional areas |
-| `gitnexus://repo/cove-frontend/processes` | All execution flows |
-| `gitnexus://repo/cove-frontend/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/cove/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/cove/clusters` | All functional areas |
+| `gitnexus://repo/cove/processes` | All execution flows |
+| `gitnexus://repo/cove/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 
@@ -45,11 +45,11 @@ This project is indexed by GitNexus as **cove-frontend** (764 symbols, 1474 rela
 ## API Documentation and Environment Configuration
 
 - The Figma design source for this project is `[Cove](https://www.figma.com/design/wks3wwXIDCjdsVS6jPQqS6/Cove?node-id=0-1&m=dev&t=5gPGykVr97PD5dac-1)`. Use this file as the design reference for Cove UI work.
-- The OpenAPI contract is located at `/Users/sheepzhao/WorkSpace/agent/boxify/api-go/docs/openapi.json`. Before adding or changing an API call, use it to verify the path, request body, response shape, and authentication requirements.
+- The OpenAPI contract is located at `/Users/sheepzhao/WorkSpace/agent/boxify/cove/packages/server/docs/openapi.json`. Before adding or changing an API call, use it to verify the path, request body, response shape, and authentication requirements.
 - The frontend API base URL is supplied exclusively through `VITE_API_BASE_URL`; it defaults to `http://localhost:8000` when unset.
 - Configure environment-specific values in uncommitted files such as `frontend/.env.development.local` and `frontend/.env.production.local`. Do not hard-code environment URLs in application code.
 - If the `openapi.json` path changes, update this instruction at the same time.
-- When an API behavior is not documented in the OpenAPI contract, such as streaming response event types, inspect the service implementation at `/Users/sheepzhao/WorkSpace/agent/boxify/api-go` and treat it as the source of truth.
+- When an API behavior is not documented in the OpenAPI contract, such as streaming response event types, inspect the service implementation at `/Users/sheepzhao/WorkSpace/agent/boxify/cove/packages/server` and treat it as the source of truth.
 
 ## iOS UI Debugging
 

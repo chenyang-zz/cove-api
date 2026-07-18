@@ -1,0 +1,37 @@
+.githooks/pre-push
+  s_caa2097fd07076::t_bfdc070a43c661 3-10,13-77
+.github/workflows/cd.yml
+  s_caa2097fd07076::t_4ae1c0cfe6b473 4,27-65,69
+AGENTS.md
+  s_caa2097fd07076::t_ad8befb88c7d7c 26
+CONTRIBUTING.md
+  s_caa2097fd07076::t_df1fcd7a8673bd 81-109
+Makefile
+  s_caa2097fd07076::t_7d0a7fe29f8626 51-52
+README.md
+  s_ffe53253afe1bb::t_fb4af98af4b373 3-15,22-34,37-47,51-74,77,80-85,87-97,100-146,150-167,169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "50b6c33215980aaf95d042660490ab4c3ee9ef29",
+  "prompts": {},
+  "sessions": {
+    "s_caa2097fd07076": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7408-4aed-7012-b7fb-1f20995e2d3d",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    },
+    "s_ffe53253afe1bb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_ffe53253afe1bb",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}

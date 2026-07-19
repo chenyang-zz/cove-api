@@ -76,8 +76,12 @@ app-build-docker:
 app-run-docker:
 	cd "$(APP_DIR)" && task run:docker
 
+# 仅测试不链接 Wails CGO 的纯 Go 包（与 CI App/Desktop 一致）。
 app-go-test:
-	cd "$(APP_DIR)" && go test ./...
+	cd "$(APP_DIR)" && \
+		pkgs=$$(go list ./... | grep -Ev 'github.com/chenyang-zz/cove$$|/internal/app$$|/build/ios$$' || true); \
+		if [ -z "$$pkgs" ]; then echo "No pure-Go desktop packages to test"; exit 0; fi; \
+		go test $$pkgs
 
 app-frontend-build:
 	cd "$(APP_FRONTEND_DIR)" && pnpm build

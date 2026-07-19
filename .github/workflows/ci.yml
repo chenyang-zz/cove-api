@@ -95,9 +95,22 @@ jobs:
           go-version-file: packages/app/go.mod
           cache-dependency-path: packages/app/go.sum
 
+      # Wails 桌面/iOS 入口依赖平台 CGO（Linux 需 GTK4/WebKit）。CI runner 不装这些系统库，
+      # 因此只跑不链接 Wails runtime 的纯 Go 包，避免整条 Desktop/Web job 因缺库失败。
       - name: Test desktop Go packages
         working-directory: packages/app
-        run: go test ./...
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkgs=$(go list ./... | grep -Ev 'github.com/chenyang-zz/cove$|/internal/app$|/build/ios$' || true)
+          if [ -z "${pkgs}" ]; then
+            echo "No pure-Go desktop packages to test"
+            exit 0
+          fi
+          echo "Testing pure-Go packages (excluding Wails CGO entrypoints):"
+          printf '  %s\n' ${pkgs}
+          # shellcheck disable=SC2086
+          go test ${pkgs}
 
   app-mobile:
     name: App / Mobile

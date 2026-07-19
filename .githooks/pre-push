@@ -138,10 +138,16 @@ if [ "$FULL_VERIFY" = true ]; then
     pnpm build
   )
 
-  echo "  ▸ Desktop Go tests"
+  echo "  ▸ Desktop Go tests (pure-Go only; skip Wails CGO entrypoints)"
   (
     cd "$APP_DIR"
-    go test ./...
+    pkgs=$(go list ./... | grep -Ev 'github.com/chenyang-zz/cove$|/internal/app$|/build/ios$' || true)
+    if [ -z "${pkgs}" ]; then
+      echo "    (no pure-Go desktop packages)"
+    else
+      # shellcheck disable=SC2086
+      go test ${pkgs}
+    fi
   )
 
   echo "  ▸ Mobile lint / typecheck / tests"

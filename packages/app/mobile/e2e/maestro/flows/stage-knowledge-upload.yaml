@@ -1,0 +1,18 @@
+appId: com.apple.DocumentsApp
+name: Stage the controlled knowledge upload fixture in Files
+tags:
+  - ios
+  - fixture-setup
+---
+- extendedWaitUntil:
+    visible: 保存
+    timeout: 10000
+- tapOn: 保存
+- extendedWaitUntil:
+    visible: .*${MAESTRO_E2E_UPLOAD_FILE_STEM}.*
+    timeout: 10000
+- tapOn: 关闭
+- extendedWaitUntil:
+    visible: .*${MAESTRO_E2E_UPLOAD_FILE_STEM}.*
+    timeout: 10000
+- takeScreenshot: 00-controlled-file-staged

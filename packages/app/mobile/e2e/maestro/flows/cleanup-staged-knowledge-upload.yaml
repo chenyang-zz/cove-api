@@ -1,0 +1,19 @@
+appId: com.apple.DocumentsApp
+name: Remove the controlled knowledge upload fixture from Files
+tags:
+  - ios
+  - fixture-cleanup
+---
+- runFlow:
+    when:
+      visible: .*${MAESTRO_E2E_UPLOAD_FILE_STEM}.*
+    commands:
+      - longPressOn: .*${MAESTRO_E2E_UPLOAD_FILE_STEM}.*
+      - swipe:
+          start: 50%,90%
+          end: 50%,48%
+          duration: 500
+      - tapOn: 删除
+      - waitForAnimationToEnd
+- assertNotVisible: .*${MAESTRO_E2E_UPLOAD_FILE_STEM}.*
+- takeScreenshot: 05-controlled-file-removed

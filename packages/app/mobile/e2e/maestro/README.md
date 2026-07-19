@@ -68,6 +68,7 @@ IOS_SIMULATOR_UDID=<simulator-udid> \
 E2E_RUN_ID=<run-id> \
 MAESTRO_EXPO_DEV_CLIENT_URL='exp+cove-mobile://expo-development-client/?url=<encoded-metro-url>' \
 MAESTRO_E2E_API_URL=http://127.0.0.1:58000 \
+MAESTRO_E2E_LLM_BASE_URL=http://127.0.0.1:58001/v1 \
 MAESTRO_E2E_USERNAME=<synthetic-username> \
 MAESTRO_E2E_EMAIL=<synthetic-email> \
 MAESTRO_E2E_PASSWORD=<synthetic-password> \
@@ -78,8 +79,28 @@ make app-mobile-e2e-native-lifecycle
 
 The wrapper creates only the disposable user fixture through the public registration API. The App flow proves anonymous protected-route rejection, App login, keyboard-backed chat draft state, drawer navigation to the real default knowledge base, the iOS interactive-pop gesture, preservation of the mounted chat draft, cancellation of an unsaved profile sheet edit, process termination/relaunch, and SecureStore session restoration without persisting page-local draft or profile state. It records the complete Simulator flow to `evidence/native-lifecycle.mp4`, captures seven checkpoints, and sanitizes retained text artifacts on exit.
 
+## Native knowledge upload flow
+
+Keep the run-owned API, worker, dependencies, and Metro process active. Use a fresh synthetic user and the host-side loopback URL only for public-API fixture setup:
+
+```bash
+IOS_SIMULATOR_UDID=<simulator-udid> \
+E2E_RUN_ID=<run-id> \
+MAESTRO_EXPO_DEV_CLIENT_URL='exp+cove-mobile://expo-development-client/?url=<encoded-metro-url>' \
+MAESTRO_E2E_API_URL=http://127.0.0.1:58000 \
+MAESTRO_E2E_LLM_BASE_URL=http://127.0.0.1:58001/v1 \
+MAESTRO_E2E_USERNAME=<synthetic-username> \
+MAESTRO_E2E_EMAIL=<synthetic-email> \
+MAESTRO_E2E_PASSWORD=<synthetic-password> \
+make app-mobile-e2e-knowledge-upload
+```
+
+The wrapper copies the controlled Markdown fixture into the selected Simulator's temporary directory, hands it to the public iOS document-import save sheet with `simctl openurl`, and uses Maestro to save it into Files. It does not write to a private App or Files container. A pre-staged runner may set `MAESTRO_E2E_FILES_READY=1` and optionally `MAESTRO_E2E_UPLOAD_FILE_STEM`; otherwise a short hash of the run ID creates a collision-free filename that remains fully addressable in the iOS Files accessibility tree. Explicit stems are limited to 40 characters for the same reason. The wrapper then registers the disposable user through `/api/auth/register`, creates a run-owned local embedding configuration, and verifies through public APIs that the user has exactly one empty default knowledge base. On every success or failure after automated staging, cleanup removes both the Simulator temporary file and the exact run-owned Files document; pre-staged user-owned fixtures are left untouched.
+
+Maestro then performs a real App login, enters the default knowledge-base detail through normal navigation, opens Expo's real iOS DocumentPicker, selects the controlled Markdown file, observes `等待处理` or `解析中`, and waits for `已就绪` plus a non-zero visible chunk count. It never uploads through setup APIs or uses a deep link to bypass native selection. The worker deadline defaults to 120 seconds and can be bounded with `MAESTRO_E2E_PROCESSING_TIMEOUT_MS` from 1000 through 600000 milliseconds. The wrapper records `knowledge-upload.mp4`, captures the empty, picker, processing, and ready checkpoints, preserves the first Maestro failure, and sanitizes retained text artifacts on every exit.
+
 ## CI and maintenance
 
-A CI runner needs macOS, Java 17+, a compatible Xcode/iOS Simulator runtime, the Maestro CLI, an iOS Simulator development build, Metro configured for the disposable local API, and the root OrbStack E2E lifecycle. The suite remains serial while it shares one database, deterministic provider, and Simulator. The registration UI remains a separate gap because iOS Password AutoFill requires a dedicated deterministic strategy; the navigation flow intentionally provisions its account at the public API boundary.
+A CI runner needs macOS, Java 17+, a compatible Xcode/iOS Simulator runtime, the Maestro CLI, an iOS Simulator development build, Metro configured for the disposable local API, and the root OrbStack E2E lifecycle. The suite remains serial while it shares one database, deterministic provider, and Simulator. The native upload flow stages its controlled file through the public iOS document-import UI; this setup must not be replaced with an API upload. The registration UI remains a separate gap because iOS Password AutoFill requires a dedicated deterministic strategy; the navigation flow intentionally provisions its account at the public API boundary.
 
 Maintain stable English kebab-case `testID` values when UI copy or layout changes. Update the flow when a user-visible contract changes, and verify Maestro compatibility when Expo, React Native, Xcode, iOS, or Maestro is upgraded. Keep native build/startup and dependency lifecycle logic out of this directory; those remain owned by the Simulator skill and root E2E harness.

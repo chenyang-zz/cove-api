@@ -1,0 +1,95 @@
+appId: io.github.chenyangzz.cove.mobile
+name: Knowledge document upload becomes ready
+tags:
+  - ios
+  - local-real-db
+  - knowledge
+  - native-document-picker
+---
+- clearKeychain
+- launchApp:
+    clearState: true
+- openLink: ${MAESTRO_EXPO_DEV_CLIENT_URL}
+- extendedWaitUntil:
+    visible: (Continue|登录)
+    timeout: 60000
+- tapOn:
+    text: Continue
+    optional: true
+    label: Dismiss the Expo development-client first-run guide
+- waitForAnimationToEnd
+- tapOn:
+    text: Close
+    optional: true
+    label: Close the Expo development menu after its first-run guide
+- extendedWaitUntil:
+    visible:
+      id: auth-login-action
+    timeout: 20000
+
+# Authenticate through the real App boundary.
+- tapOn:
+    id: auth-login-input
+- inputText: ${MAESTRO_E2E_USERNAME}
+- tapOn:
+    id: auth-password-input
+- inputText: ${MAESTRO_E2E_PASSWORD}
+- tapOn:
+    id: auth-login-action
+- tapOn:
+    text: 以后
+    optional: true
+    label: Dismiss the iOS password-save prompt when it appears
+- tapOn:
+    text: Not Now
+    optional: true
+    label: Dismiss the English iOS password-save prompt when it appears
+- extendedWaitUntil:
+    visible:
+      id: chat-message-input
+    timeout: 20000
+
+# Navigate normally to the disposable user's default knowledge base.
+- tapOn:
+    id: chat-drawer-open
+- tapOn:
+    text: 打开知识库
+- extendedWaitUntil:
+    visible: 默认知识库，0 篇文档
+    timeout: 20000
+- tapOn: 默认知识库，0 篇文档
+- extendedWaitUntil:
+    visible:
+      id: knowledge-document-upload-empty
+    timeout: 20000
+- assertVisible: 共 0 篇
+- takeScreenshot: 01-empty-default-knowledge-base
+
+# Open the real iOS DocumentPicker and select the manually staged controlled fixture.
+- tapOn:
+    id: knowledge-document-upload-empty
+- extendedWaitUntil:
+    visible: ${MAESTRO_E2E_UPLOAD_FILE_STEM}(\.md)?
+    timeout: 20000
+- takeScreenshot: 02-native-document-picker
+# iOS 26 exposes the filename as a non-clickable text node. The first Recent
+# thumbnail is the controlled run-unique fixture asserted immediately above.
+- tapOn:
+    point: 17%,27%
+
+# The optimistic row must appear immediately. A fast local worker may already be done
+# by the time Maestro evaluates this condition, so all valid visible states are accepted.
+- extendedWaitUntil:
+    visible: .*${MAESTRO_E2E_UPLOAD_FILE_STEM}\.md，(等待处理|解析中.*|已就绪).*
+    timeout: 20000
+- assertVisible: 共 1 篇
+- takeScreenshot: 03-document-processing
+
+# App polling must converge to the worker's terminal ready state with real chunks.
+- extendedWaitUntil:
+    visible: .*${MAESTRO_E2E_UPLOAD_FILE_STEM}\.md，已就绪.*
+    timeout: ${MAESTRO_E2E_PROCESSING_TIMEOUT_MS}
+- assertVisible: '.*[1-9][0-9]* 个片段.*'
+- assertNotVisible:
+    id: knowledge-document-upload-error
+- takeScreenshot: 04-document-ready

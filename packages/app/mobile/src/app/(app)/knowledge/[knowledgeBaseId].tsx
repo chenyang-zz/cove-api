@@ -9,15 +9,24 @@ import {
   View,
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
 import { SymbolView } from 'expo-symbols';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/core/api';
 import {
+  applyDocumentStatuses,
   canLoadMoreDocuments,
+  documentUploadError,
+  getDocumentStatus,
   listDocuments,
   mergeDocumentPage,
+  prependUploadedDocument,
+  refreshDocumentRecords,
+  uploadDocument,
   type DocumentPaginationState,
+  type DocumentStatusResponse,
+  type DocumentUploadFile,
   type KnowledgeDocument,
 } from '@/core/documents';
 import { getKnowledgeBase, type KnowledgeBase } from '@/core/knowledge';
@@ -26,6 +35,14 @@ import { useAuth } from '@/providers/AuthProvider';
 import { usePalette, type Palette } from '@/theme/palette';
 
 const PAGE_SIZE = 20;
+const DOCUMENT_STATUS_POLL_INTERVAL = 1800;
+const DOCUMENT_PICKER_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'text/markdown',
+  'text/html',
+];
 
 type LoadState = 'loading' | 'ready' | 'error';
 type RouteParams = {
@@ -62,11 +79,15 @@ export default function KnowledgeDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const knowledgeBaseRef = useRef<KnowledgeBase | null>(cachedKnowledge);
   const documentsRef = useRef<DocumentPaginationState>(EMPTY_DOCUMENTS);
   const generationRef = useRef(0);
   const refreshingRef = useRef(false);
   const loadingMoreRef = useRef(false);
+  const uploadingRef = useRef(false);
+  const pollingRef = useRef(false);
 
   const updateDocuments = useCallback((next: DocumentPaginationState) => {
     documentsRef.current = next;
@@ -193,6 +214,133 @@ export default function KnowledgeDetailScreen() {
     }
   }, [documentState, handleAuthError, knowledgeBaseId, updateDocuments]);
 
+  const selectAndUploadDocument = useCallback(async () => {
+    if (uploadingRef.current) {
+      return;
+    }
+    uploadingRef.current = true;
+    setUploading(true);
+    setUploadError('');
+    const generation = generationRef.current;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: DOCUMENT_PICKER_TYPES,
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled || generation !== generationRef.current) {
+        return;
+      }
+      const asset = result.assets[0];
+      if (!asset) {
+        return;
+      }
+      const file: DocumentUploadFile = {
+        uri: asset.uri,
+        name: asset.name,
+        mimeType: asset.mimeType,
+        size: asset.size,
+      };
+      const validationError = documentUploadError(file);
+      if (validationError) {
+        setUploadError(validationError);
+        return;
+      }
+      const uploaded = await uploadDocument(knowledgeBaseId, file);
+      if (generation !== generationRef.current) {
+        return;
+      }
+      updateDocuments(prependUploadedDocument(documentsRef.current, uploaded));
+      setDocumentState('ready');
+      setKnowledgeBase((current) => {
+        if (!current) {
+          return current;
+        }
+        const next = { ...current, doc_count: Math.max(0, current.doc_count ?? 0) + 1 };
+        knowledgeBaseRef.current = next;
+        return next;
+      });
+    } catch (caught) {
+      if (generation === generationRef.current) {
+        setUploadError(errorMessage(caught, '文档上传失败，请稍后重试。'));
+        await handleAuthError(caught);
+      }
+    } finally {
+      uploadingRef.current = false;
+      setUploading(false);
+    }
+  }, [handleAuthError, knowledgeBaseId, updateDocuments]);
+
+  const pollDocumentStatuses = useCallback(async () => {
+    if (pollingRef.current) {
+      return;
+    }
+    const activeDocuments = documentsRef.current.items.filter(isDocumentProcessing);
+    if (activeDocuments.length === 0) {
+      return;
+    }
+    pollingRef.current = true;
+    const generation = generationRef.current;
+    try {
+      const results = await Promise.allSettled(
+        activeDocuments.map((item) => getDocumentStatus(item.id)),
+      );
+      if (generation !== generationRef.current) {
+        return;
+      }
+      const updates = new Map<string, DocumentStatusResponse>();
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          updates.set(activeDocuments[index].id, result.value);
+        }
+      });
+      let nextDocuments = documentsRef.current;
+      const completed = [...updates.entries()].filter(([, status]) => status.status === 'done');
+      const nonCompletedUpdates = new Map(
+        [...updates.entries()].filter(([, status]) => status.status !== 'done'),
+      );
+      if (nonCompletedUpdates.size > 0) {
+        nextDocuments = applyDocumentStatuses(nextDocuments, nonCompletedUpdates);
+      }
+      if (completed.length > 0) {
+        try {
+          const refreshed = await listDocuments(knowledgeBaseId, 1, PAGE_SIZE);
+          if (generation !== generationRef.current) {
+            return;
+          }
+          nextDocuments = refreshDocumentRecords(
+            applyDocumentStatuses(nextDocuments, new Map(completed)),
+            refreshed,
+          );
+          setDocumentError('');
+        } catch (caught) {
+          setDocumentError(errorMessage(caught, '文档已处理完成，片段信息刷新失败。'));
+          await handleAuthError(caught);
+        }
+      }
+      if (updates.size > 0) {
+        updateDocuments(nextDocuments);
+      }
+      const rejected = results.find((result) => result.status === 'rejected');
+      if (rejected?.status === 'rejected') {
+        await handleAuthError(rejected.reason);
+      }
+    } finally {
+      pollingRef.current = false;
+    }
+  }, [handleAuthError, knowledgeBaseId, updateDocuments]);
+
+  const hasProcessingDocuments = documents.items.some(isDocumentProcessing);
+  useEffect(() => {
+    if (!hasProcessingDocuments) {
+      return;
+    }
+    const timer = setInterval(() => {
+      void pollDocumentStatuses();
+    }, DOCUMENT_STATUS_POLL_INTERVAL);
+    return () => clearInterval(timer);
+  }, [hasProcessingDocuments, pollDocumentStatuses]);
+
   const title = knowledgeBase?.name || firstParam(params.name) || '知识库详情';
 
   return (
@@ -215,6 +363,17 @@ export default function KnowledgeDetailScreen() {
           separateBackground
           tintColor={palette.accent}
           onPress={() => router.back()}
+        />
+      </Stack.Toolbar>
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button
+          accessibilityLabel={uploading ? '正在上传文档' : '上传文档'}
+          disabled={uploading || knowledgeState !== 'ready'}
+          icon="square.and.arrow.up"
+          hidesSharedBackground={false}
+          separateBackground
+          tintColor={palette.accent}
+          onPress={() => void selectAndUploadDocument()}
         />
       </Stack.Toolbar>
       <FlatList
@@ -250,8 +409,10 @@ export default function KnowledgeDetailScreen() {
           <DocumentEmptyState
             state={documentState}
             error={documentError}
+            uploading={uploading}
             palette={palette}
             onRetry={() => void loadInitial()}
+            onUpload={() => void selectAndUploadDocument()}
           />
         )}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -281,6 +442,28 @@ export default function KnowledgeDetailScreen() {
             {knowledgeError || documentError}
           </Text>
         </View>
+      ) : null}
+      {uploading ? (
+        <View
+          accessibilityLiveRegion="polite"
+          style={[styles.uploadNotice, { backgroundColor: palette.surface, borderColor: palette.border }]}
+          testID="knowledge-document-uploading">
+          <ActivityIndicator size="small" color={palette.accent} />
+          <Text style={[styles.uploadNoticeText, { color: palette.textSecondary }]}>正在上传文档…</Text>
+        </View>
+      ) : uploadError ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${uploadError}，点击关闭`}
+          onPress={() => setUploadError('')}
+          style={[
+            styles.uploadNotice,
+            { backgroundColor: palette.dangerSurface, borderColor: palette.danger },
+          ]}
+          testID="knowledge-document-upload-error">
+          <SymbolView name="exclamationmark.circle.fill" size={16} tintColor={palette.danger} weight="semibold" />
+          <Text numberOfLines={2} style={[styles.uploadNoticeText, { color: palette.danger }]}>{uploadError}</Text>
+        </Pressable>
       ) : null}
     </SafeAreaView>
   );
@@ -370,13 +553,17 @@ function KnowledgeSummarySkeleton({ palette }: { palette: Palette }) {
 function DocumentEmptyState({
   state,
   error,
+  uploading,
   palette,
   onRetry,
+  onUpload,
 }: {
   state: LoadState;
   error: string;
+  uploading: boolean;
   palette: Palette;
   onRetry: () => void;
+  onUpload: () => void;
 }) {
   if (state === 'loading') {
     return <DocumentSkeleton palette={palette} />;
@@ -410,7 +597,26 @@ function DocumentEmptyState({
         <SymbolView name="doc.text" size={27} tintColor={palette.accent} weight="medium" />
       </View>
       <Text style={[styles.emptyTitle, { color: palette.text }]}>还没有文档</Text>
-      <Text style={[styles.emptyMessage, { color: palette.textMuted }]}>这个知识库暂时是空的，后续可从上传入口添加资料。</Text>
+      <Text style={[styles.emptyMessage, { color: palette.textMuted }]}>上传资料后，Cove 会自动解析并加入这个知识库。</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="选择要上传的文档"
+        accessibilityState={{ disabled: uploading, busy: uploading }}
+        disabled={uploading}
+        onPress={onUpload}
+        style={({ pressed }) => [
+          styles.uploadButton,
+          { backgroundColor: palette.accent },
+          pressed && !uploading && styles.pressed,
+        ]}
+        testID="knowledge-document-upload-empty">
+        {uploading ? (
+          <ActivityIndicator size="small" color={palette.accentText} />
+        ) : (
+          <SymbolView name="square.and.arrow.up" size={15} tintColor={palette.accentText} weight="semibold" />
+        )}
+        <Text style={[styles.uploadButtonLabel, { color: palette.accentText }]}>选择文档</Text>
+      </Pressable>
     </View>
   );
 }
@@ -437,7 +643,7 @@ function DocumentRow({ item, index, palette }: { item: KnowledgeDocument; index:
   return (
     <View
       accessible
-      accessibilityLabel={`${item.file_name}，${status.label}`}
+      accessibilityLabel={`${item.file_name}，${status.label}，${details}`}
       style={[styles.documentCard, { backgroundColor: palette.surface, borderColor: palette.border }]}
       testID={`knowledge-document-${item.id || index}`}>
       <View style={[styles.documentIcon, { backgroundColor: `${status.color}12` }]}>
@@ -591,6 +797,10 @@ function progressPercent(progress: number): number {
   return Math.round(Math.max(0, Math.min(100, normalized)));
 }
 
+function isDocumentProcessing(item: KnowledgeDocument): boolean {
+  return item.status === 'pending' || item.status === 'parsing';
+}
+
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   listContent: { flexGrow: 1, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 28 },
@@ -667,6 +877,17 @@ const styles = StyleSheet.create({
   emptyMessage: { maxWidth: 270, marginTop: 6, fontSize: 13, lineHeight: 19, textAlign: 'center' },
   retryButton: { height: 42, marginTop: 18, paddingHorizontal: 17, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   retryLabel: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
+  uploadButton: {
+    minHeight: 42,
+    marginTop: 18,
+    paddingHorizontal: 17,
+    borderRadius: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  uploadButtonLabel: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
   skeletonList: { gap: 10 },
   documentSkeletonTitle: { height: 12, marginTop: 3, borderRadius: 6 },
   documentSkeletonMeta: { width: 110, height: 8, marginTop: 10, borderRadius: 4 },
@@ -675,5 +896,21 @@ const styles = StyleSheet.create({
   footerEnd: { paddingTop: 18, fontSize: 11, lineHeight: 16, textAlign: 'center' },
   notice: { position: 'absolute', right: 16, bottom: 14, left: 16, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 11 },
   noticeText: { fontSize: 12, lineHeight: 17, textAlign: 'center' },
+  uploadNotice: {
+    position: 'absolute',
+    right: 16,
+    bottom: 14,
+    left: 16,
+    minHeight: 42,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    borderRadius: 13,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  uploadNoticeText: { flexShrink: 1, fontSize: 12, lineHeight: 17, fontWeight: '600' },
   pressed: { opacity: 0.6, transform: [{ scale: 0.98 }] },
 });

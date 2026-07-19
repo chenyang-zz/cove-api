@@ -198,6 +198,64 @@ export async function authenticatedCommand(
   }
 }
 
+async function performMultipartRequest<T>(
+  path: string,
+  accessToken: string,
+  createBody: () => FormData,
+): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: createBody(),
+    });
+  } catch {
+    throw new ApiError(0, '无法连接到服务器，请检查网络后重试。');
+  }
+
+  let envelope: ApiEnvelope<T>;
+  try {
+    envelope = (await response.json()) as ApiEnvelope<T>;
+  } catch {
+    throw new ApiError(response.status, '服务器返回了无法识别的响应。');
+  }
+  if (!response.ok || envelope.code !== 0) {
+    throw new ApiError(
+      response.status,
+      envelope.message || '请求失败，请稍后重试。',
+      envelope.errors ?? [],
+    );
+  }
+  if (envelope.data === undefined) {
+    throw new ApiError(200, '服务器响应缺少必要数据。');
+  }
+  return envelope.data;
+}
+
+export async function authenticatedMultipartRequest<T>(
+  path: string,
+  createBody: () => FormData,
+  retryAfterRefresh = true,
+): Promise<T> {
+  const session = await loadStoredSession();
+  if (!session) {
+    throw new ApiError(401, '请先登录。');
+  }
+  try {
+    return await performMultipartRequest<T>(path, session.accessToken, createBody);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401 || !retryAfterRefresh) {
+      throw error;
+    }
+    const refreshed = await refreshSession();
+    if (!refreshed) {
+      throw new ApiError(401, '登录状态已失效，请重新登录。');
+    }
+    return performMultipartRequest<T>(path, refreshed.accessToken, createBody);
+  }
+}
+
 export function getCurrentUser(): Promise<UserResponse> {
   return authenticatedRequest<UserResponse>('/api/auth/me');
 }

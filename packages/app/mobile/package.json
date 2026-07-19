@@ -8,6 +8,8 @@
     "expo-constants": "~57.0.5",
     "expo-dev-client": "~57.0.6",
     "expo-device": "~57.0.1",
+    "expo-document-picker": "~57.0.1",
+    "expo-file-system": "~57.0.1",
     "expo-font": "~57.0.1",
     "expo-glass-effect": "~57.0.1",
     "expo-image": "~57.0.1",
@@ -47,7 +49,8 @@
     "test": "vitest run",
     "e2e:ios:profile-password": "bash e2e/maestro/run-profile-password.sh",
     "e2e:ios:chat-persistence": "bash e2e/maestro/run-chat-persistence.sh",
-    "e2e:ios:native-lifecycle": "bash e2e/maestro/run-native-lifecycle.sh"
+    "e2e:ios:native-lifecycle": "bash e2e/maestro/run-native-lifecycle.sh",
+    "e2e:ios:knowledge-upload": "bash e2e/maestro/run-knowledge-upload.sh"
   },
   "private": true
 }

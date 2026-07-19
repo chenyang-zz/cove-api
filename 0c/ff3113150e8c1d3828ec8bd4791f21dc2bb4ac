@@ -1,0 +1,19 @@
+packages/app/mobile/src/app/(app)/knowledge.tsx
+  s_f6dcf538d84667::t_8e5c823a871729 101-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "0cff3113150e8c1d3828ec8bd4791f21dc2bb4ac",
+  "prompts": {},
+  "sessions": {
+    "s_f6dcf538d84667": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_f6dcf538d84667",
+        "model": "unknown"
+      },
+      "human_author": "chenyang <904852749@qq.com>"
+    }
+  }
+}
